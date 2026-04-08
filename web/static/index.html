@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MELTS Modern</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-mark">
+          <span class="logo-text">MELTS</span>
+          <span class="logo-subtitle">Modern</span>
+        </div>
+        <div class="mode-badge" id="mode-badge">rhyolite-MELTS 1.2.0</div>
+      </div>
+
+      <form id="sim-form" autocomplete="off">
+        <!-- MELTS mode -->
+        <fieldset>
+          <legend>Calculation Mode</legend>
+          <select id="melts-mode" name="melts_mode">
+            <option value="1">rhyolite-MELTS 1.0.2</option>
+            <option value="2">pMELTS 5.6.1</option>
+            <option value="3">rhyolite-MELTS 1.1.0</option>
+            <option value="4" selected>rhyolite-MELTS 1.2.0</option>
+          </select>
+          <div id="pmelts-warning" class="warning hidden">
+            pMELTS valid range: 1000-2500 &deg;C, 1-3 GPa (10000-30000 bar)
+          </div>
+        </fieldset>
+
+        <!-- Preset -->
+        <fieldset>
+          <legend>Preset Composition</legend>
+          <select id="preset-select">
+            <option value="">-- Custom --</option>
+          </select>
+        </fieldset>
+
+        <!-- Composition -->
+        <fieldset>
+          <legend>Composition (wt%)</legend>
+          <table class="comp-table" id="comp-table">
+            <thead><tr><th>Oxide</th><th>wt%</th></tr></thead>
+            <tbody id="comp-body"></tbody>
+          </table>
+          <button type="button" class="btn-link" id="toggle-minor">Show more oxides...</button>
+        </fieldset>
+
+        <!-- T range -->
+        <fieldset>
+          <legend>Temperature (&deg;C)</legend>
+          <div class="input-row">
+            <label>Start<input type="number" id="T-start" name="T_start" value="1400" step="1"></label>
+            <label>End<input type="number" id="T-end" name="T_end" value="900" step="1"></label>
+            <label>Step<input type="number" id="dT" name="dT" value="-2" step="0.5"></label>
+          </div>
+        </fieldset>
+
+        <!-- P range -->
+        <fieldset>
+          <legend>Pressure (bar)</legend>
+          <div class="input-row">
+            <label>Start<input type="number" id="P-start" name="P_start" value="5000" step="1"></label>
+            <label>End<input type="number" id="P-end" name="P_end" value="1000" step="1"></label>
+          </div>
+          <div class="dp-dt-display" id="dp-dt-display">dP/dT = 8.0 bar/&deg;C</div>
+        </fieldset>
+
+        <!-- fO2 buffer -->
+        <fieldset>
+          <legend>fO<sub>2</sub> Buffer</legend>
+          <div class="input-row">
+            <label>Buffer
+              <select id="fo2-buffer" name="fo2_buffer">
+                <option value="">None</option>
+                <option value="FMQ">FMQ</option>
+                <option value="NNO">NNO</option>
+                <option value="IW">IW</option>
+                <option value="HM">HM</option>
+                <option value="COH">COH</option>
+              </select>
+            </label>
+            <label>Offset<input type="number" id="fo2-offset" name="fo2_offset" value="0" step="0.1"></label>
+          </div>
+        </fieldset>
+
+        <!-- Crystallization mode -->
+        <fieldset>
+          <legend>Crystallization Mode</legend>
+          <select id="cryst-mode" name="crystallization_mode">
+            <option value="fractionate" selected>Fractionate Solids</option>
+            <option value="equilibrium">Equilibrium</option>
+          </select>
+        </fieldset>
+
+        <button type="submit" class="btn-run" id="btn-run">
+          <span class="btn-run-label">Run Simulation</span>
+          <span class="btn-run-spinner hidden"></span>
+        </button>
+      </form>
+    </aside>
+
+    <!-- ================= MAIN CONTENT ================= -->
+    <main class="main">
+      <!-- Mobile sidebar toggle -->
+      <button class="sidebar-toggle" id="sidebar-toggle">&#9776;</button>
+
+      <!-- Progress bar -->
+      <div id="progress-section" class="progress-section hidden">
+        <div class="progress-bar-track">
+          <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar"></div>
+          </div>
+          <span class="progress-pct" id="progress-pct"></span>
+        </div>
+        <div class="progress-info" id="progress-info">Waiting...</div>
+      </div>
+
+      <!-- Error display -->
+      <div id="error-display" class="error-display hidden"></div>
+
+      <!-- Tab bar -->
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-tab="classification">Classification</button>
+        <button class="tab" data-tab="harker">Harker</button>
+        <button class="tab" data-tab="pt-path">P-T Path</button>
+        <button class="tab" data-tab="evolution">Evolution</button>
+        <button class="tab" data-tab="phases">Phase Details</button>
+        <button class="tab" data-tab="system">System Properties</button>
+        <button class="tab" data-tab="data">Data Table</button>
+      </div>
+
+      <!-- Tab contents -->
+      <div class="tab-content" id="tab-content">
+        <!-- Classification: TAS + AFM side by side -->
+        <div class="tab-pane active" data-pane="classification">
+          <div class="plot-grid-2">
+            <div class="plot-container" id="plot-tas"></div>
+            <div class="plot-container" id="plot-afm"></div>
+          </div>
+        </div>
+
+        <!-- Harker -->
+        <div class="tab-pane" data-pane="harker">
+          <div class="plot-grid-2">
+            <div class="plot-container" id="plot-harker-mgo"></div>
+            <div class="plot-container" id="plot-harker-sio2"></div>
+          </div>
+          <div class="plot-container" id="plot-mg-vs-sio2"></div>
+        </div>
+
+        <!-- P-T Path -->
+        <div class="tab-pane" data-pane="pt-path">
+          <div class="plot-container" id="plot-pt-path"></div>
+        </div>
+
+        <!-- Evolution -->
+        <div class="tab-pane" data-pane="evolution">
+          <div class="plot-grid-2">
+            <div class="plot-container" id="plot-evolution"></div>
+            <div class="plot-container" id="plot-liquid-vs-temp"></div>
+          </div>
+        </div>
+
+        <!-- Phase Details -->
+        <div class="tab-pane" data-pane="phases">
+          <div class="plot-container" id="plot-phase-masses"></div>
+          <div class="plot-grid-2x2">
+            <div class="plot-container" id="plot-olivine"></div>
+            <div class="plot-container" id="plot-cpx"></div>
+            <div class="plot-container" id="plot-plagioclase"></div>
+            <div class="plot-container" id="plot-spinel"></div>
+          </div>
+        </div>
+
+        <!-- System Properties -->
+        <div class="tab-pane" data-pane="system">
+          <div class="plot-grid-2">
+            <div class="plot-container" id="plot-system-thermo"></div>
+            <div class="plot-container" id="plot-density"></div>
+          </div>
+        </div>
+
+        <!-- Data Table -->
+        <div class="tab-pane" data-pane="data">
+          <div class="data-controls">
+            <button class="btn-download" id="btn-csv">Download CSV</button>
+            <span class="row-count" id="row-count"></span>
+          </div>
+          <div class="table-wrapper" id="table-wrapper">
+            <p class="placeholder-text">Run a simulation to see results.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">
+          <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="40" cy="40" r="36" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.35"/>
+            <path d="M28 52 L40 24 L52 52" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+            <path d="M32 44 h16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+            <circle cx="40" cy="20" r="2.5" fill="currentColor" opacity="0.3"/>
+            <circle cx="56" cy="40" r="2" fill="currentColor" opacity="0.2"/>
+            <circle cx="24" cy="40" r="2" fill="currentColor" opacity="0.2"/>
+            <path d="M33 56 Q40 62 47 56" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.3"/>
+          </svg>
+        </div>
+        <h2>Ready to simulate</h2>
+        <p>Choose a preset composition or enter your own, set P-T conditions, and click <strong>Run Simulation</strong>.</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

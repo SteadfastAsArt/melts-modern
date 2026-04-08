@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# MELTS engine runtime outputs
+*_tbl.txt
+*.inp
+results.csv
+
+# Case outputs
+cases/*/output/
+
+# Symlinked external dependencies (tracked outside this repo)
+alphamelts-app
+alphamelts-py
+lib
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+nohup.out
