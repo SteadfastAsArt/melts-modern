@@ -25,34 +25,41 @@ const MODE_NAMES = {
   "4": "rhyolite-MELTS 1.2.0",
 };
 
-// Which plots each tab needs: { tabName: [{divId, plotType}] }
+const MODE_RANGES = {
+  "1": "rhyolite-MELTS 1.0.2: 500\u20132000 \u00b0C, 0\u20134000 bar",
+  "2": "pMELTS 5.6.1: 1000\u20132500 \u00b0C, 10000\u201330000 bar",
+  "3": "rhyolite-MELTS 1.1.0: 500\u20132000 \u00b0C, 0\u20134000 bar",
+  "4": "rhyolite-MELTS 1.2.0: 500\u20132000 \u00b0C, 0\u20133000 bar",
+};
+
+// Which plots each tab needs: { tabName: [{divId, plotType, highlightMode}] }
 const TAB_PLOTS = {
   classification: [
-    { divId: "plot-tas", plotType: "tas" },
-    { divId: "plot-afm", plotType: "afm" },
+    { divId: "plot-tas", plotType: "tas", highlightMode: "marker" },
+    { divId: "plot-afm", plotType: "afm", highlightMode: "marker" },
   ],
   harker: [
-    { divId: "plot-harker-mgo", plotType: "harker_mgo" },
-    { divId: "plot-harker-sio2", plotType: "harker_sio2" },
-    { divId: "plot-mg-vs-sio2", plotType: "mg_vs_sio2" },
+    { divId: "plot-harker-mgo", plotType: "harker_mgo", highlightMode: "marker" },
+    { divId: "plot-harker-sio2", plotType: "harker_sio2", highlightMode: "marker" },
+    { divId: "plot-mg-vs-sio2", plotType: "mg_vs_sio2", highlightMode: "marker" },
   ],
   "pt-path": [
-    { divId: "plot-pt-path", plotType: "pt_path" },
+    { divId: "plot-pt-path", plotType: "pt_path", highlightMode: "marker" },
   ],
   evolution: [
-    { divId: "plot-evolution", plotType: "evolution" },
-    { divId: "plot-liquid-vs-temp", plotType: "liquid_vs_temp" },
+    { divId: "plot-evolution", plotType: "evolution", highlightMode: "vline" },
+    { divId: "plot-liquid-vs-temp", plotType: "liquid_vs_temp", highlightMode: "vline" },
   ],
   phases: [
-    { divId: "plot-phase-masses", plotType: "phase_masses" },
-    { divId: "plot-olivine", plotType: "olivine" },
-    { divId: "plot-cpx", plotType: "cpx" },
-    { divId: "plot-plagioclase", plotType: "plagioclase" },
-    { divId: "plot-spinel", plotType: "spinel" },
+    { divId: "plot-phase-masses", plotType: "phase_masses", highlightMode: "vline" },
+    { divId: "plot-olivine", plotType: "olivine", highlightMode: "vline" },
+    { divId: "plot-cpx", plotType: "cpx", highlightMode: "vline" },
+    { divId: "plot-plagioclase", plotType: "plagioclase", highlightMode: "vline" },
+    { divId: "plot-spinel", plotType: "spinel", highlightMode: "vline" },
   ],
   system: [
-    { divId: "plot-system-thermo", plotType: "system_thermo" },
-    { divId: "plot-density", plotType: "density" },
+    { divId: "plot-system-thermo", plotType: "system_thermo", highlightMode: "vline" },
+    { divId: "plot-density", plotType: "density", highlightMode: "vline" },
   ],
 };
 
@@ -65,6 +72,10 @@ let plotCache = {};       // { "simId:plotType": true } — tracks fetched plots
 let simResults = [];      // accumulated results for data table
 let minorOxVisible = false;
 let simRunning = false;
+let currentScrubberIndex = -1;
+let animationInterval = null;
+let highlightTraces = new Map(); // divId -> trace index
+let currentSpeed = 100;
 
 // ---------------------------------------------------------------------------
 // DOM references
@@ -73,7 +84,7 @@ const $form = document.getElementById("sim-form");
 const $presetSelect = document.getElementById("preset-select");
 const $meltsMode = document.getElementById("melts-mode");
 const $modeBadge = document.getElementById("mode-badge");
-const $pmeltsWarning = document.getElementById("pmelts-warning");
+const $modeInfo = document.getElementById("mode-info");
 const $compBody = document.getElementById("comp-body");
 const $toggleMinor = document.getElementById("toggle-minor");
 const $btnRun = document.getElementById("btn-run");
@@ -90,6 +101,13 @@ const $tableWrapper = document.getElementById("table-wrapper");
 const $sidebarToggle = document.getElementById("sidebar-toggle");
 const $sidebar = document.getElementById("sidebar");
 const $dpDtDisplay = document.getElementById("dp-dt-display");
+const $scrubberSection = document.getElementById("scrubber-section");
+const $tempScrubber = document.getElementById("temp-scrubber");
+const $scrubberInfo = document.getElementById("scrubber-info");
+const $btnPlay = document.getElementById("btn-play");
+const $btnPause = document.getElementById("btn-pause");
+const $speedSelect = document.getElementById("speed-select");
+const $toastContainer = document.getElementById("toast-container");
 
 // ---------------------------------------------------------------------------
 // Initialization
@@ -160,6 +178,12 @@ function bindEvents() {
     switchTab(btn.dataset.tab);
   });
 
+  // Scrubber events
+  $tempScrubber.addEventListener("input", onScrubberInput);
+  $btnPlay.addEventListener("click", onPlayClick);
+  $btnPause.addEventListener("click", onPauseClick);
+  $speedSelect.addEventListener("change", onSpeedChange);
+
   // Update dp/dt when T or P fields change
   ["T-start", "T-end", "P-start", "P-end"].forEach((id) => {
     document.getElementById(id).addEventListener("input", updateDpDt);
@@ -194,7 +218,7 @@ function onPresetChange() {
 function onModeChange() {
   const mode = $meltsMode.value;
   $modeBadge.textContent = MODE_NAMES[mode] || "";
-  $pmeltsWarning.classList.toggle("hidden", mode !== "2");
+  document.getElementById("mode-info").textContent = MODE_RANGES[mode] || "";
 }
 
 function onToggleMinor() {
@@ -272,6 +296,8 @@ function onFormSubmit(e) {
 // Simulation lifecycle
 // ---------------------------------------------------------------------------
 async function startSimulation(config) {
+  stopAnimation(); // prevent stale interval from previous sim
+  clearAllHighlights();
   simRunning = true;
   simResults = [];
   plotCache = {};
@@ -365,6 +391,16 @@ async function checkSimStatus(simId) {
 }
 
 function onSimulationComplete(simId) {
+  // Show scrubber and reset
+  stopAnimation(); // clear any stale animation from previous sim
+  $scrubberSection.classList.remove("hidden");
+  $tempScrubber.max = simResults.length - 1;
+  $tempScrubber.value = 0;
+  currentScrubberIndex = 0;
+  clearAllHighlights();
+  $btnPause.classList.add("hidden");
+  $btnPlay.classList.remove("hidden");
+
   simRunning = false;
   $progressBar.style.width = "100%";
   $progressInfo.textContent = `Done. ${simResults.length} steps computed.`;
@@ -458,6 +494,11 @@ async function fetchPlotsForTab(tabName, simId) {
     } catch (err) {
       container.innerHTML = `<div class="plot-error">Failed to load plot: ${err.message}</div>`;
     }
+  }
+
+  // Re-apply scrubber highlight after plots are rendered
+  if (currentScrubberIndex >= 0 && simResults.length > 0) {
+    updateScrubberHighlight(currentScrubberIndex);
   }
 }
 
@@ -554,4 +595,214 @@ function sortTable(col) {
 function onCsvDownload() {
   if (!currentSimId) return;
   window.open(`/api/simulate/${currentSimId}/csv`, "_blank");
+}
+
+// ---------------------------------------------------------------------------
+// Scrubber
+// ---------------------------------------------------------------------------
+let scrubberRafId = null;
+function onScrubberInput() {
+  if (scrubberRafId) return;
+  scrubberRafId = requestAnimationFrame(() => {
+    scrubberRafId = null;
+    if (simResults.length === 0) return;
+    const index = parseInt($tempScrubber.value);
+    if (index < 0 || index >= simResults.length) return;
+    currentScrubberIndex = index;
+    updateScrubberHighlight(index);
+  });
+}
+
+function updateScrubberHighlight(index) {
+  if (simResults.length === 0) return;
+  const step = simResults[index];
+  if (!step) return;
+
+  // Update info card
+  const phases = step.phases ? step.phases.split("+").filter(Boolean).map(p => p.replace(/\d+$/, "")).join(", ") : "none";
+  const liqPct = step.mass_liquid_g && simResults[0].mass_liquid_g
+    ? ((step.mass_liquid_g / simResults[0].mass_liquid_g) * 100).toFixed(1)
+    : "?";
+  $scrubberInfo.textContent = `T = ${step.T_C.toFixed(0)}\u00b0C | P = ${step.P_bar.toFixed(0)} bar | Liquid: ${liqPct}% | Phases: ${phases}`;
+
+  // Highlight on each visible plot
+  const activeTab = document.querySelector(".tab.active");
+  if (!activeTab) return;
+  const tabName = activeTab.dataset.tab;
+  const plots = TAB_PLOTS[tabName];
+  if (!plots) return;
+
+  for (const { divId, plotType, highlightMode } of plots) {
+    const container = document.getElementById(divId);
+    if (!container || !container.data) continue; // not rendered yet
+
+    if (highlightMode === "vline") {
+      Plotly.relayout(container, {
+        shapes: [{
+          type: "line",
+          x0: step.T_C, x1: step.T_C,
+          yref: "paper", y0: 0, y1: 1,
+          line: { color: "#3b82f6", width: 1.5, dash: "dash" },
+        }],
+      });
+    } else if (highlightMode === "marker") {
+      // Remove previous highlight trace
+      const prevTraceIdx = highlightTraces.get(divId);
+      if (prevTraceIdx !== undefined && container.data.length > prevTraceIdx) {
+        try { Plotly.deleteTraces(container, prevTraceIdx); } catch(e) {}
+      }
+      // Find the data point at this index from the first data trace
+      // For scatter plots, the data arrays correspond 1:1 to simResults indices
+      const firstTrace = container.data[0];
+      if (!firstTrace || !firstTrace.x || index >= firstTrace.x.length) {
+        highlightTraces.delete(divId);
+        continue;
+      }
+
+      // Determine x and y values for the highlight point
+      // Skip boundary line traces (they have hoverinfo: "skip")
+      let dataTraceIdx = -1;
+      for (let t = 0; t < container.data.length; t++) {
+        if (container.data[t].hoverinfo !== "skip" && container.data[t].mode && container.data[t].mode.includes("markers")) {
+          dataTraceIdx = t;
+          break;
+        }
+      }
+      if (dataTraceIdx === -1) {
+        highlightTraces.delete(divId);
+        continue;
+      }
+
+      const dataTrace = container.data[dataTraceIdx];
+      const xVal = dataTrace.x[index];
+      const yVal = dataTrace.y[index];
+
+      if (xVal === undefined || yVal === undefined) {
+        highlightTraces.delete(divId);
+        continue;
+      }
+
+      Plotly.addTraces(container, {
+        x: [xVal],
+        y: [yVal],
+        mode: "markers",
+        marker: {
+          size: 12,
+          color: "#3b82f6",
+          line: { color: "white", width: 2 },
+        },
+        showlegend: false,
+        hoverinfo: "skip",
+      });
+      highlightTraces.set(divId, container.data.length - 1);
+    }
+  }
+}
+
+function clearAllHighlights() {
+  highlightTraces.clear();
+  currentScrubberIndex = -1;
+}
+
+// ---------------------------------------------------------------------------
+// Play / pause animation
+// ---------------------------------------------------------------------------
+function onPlayClick() {
+  if (simResults.length === 0) return;
+  $btnPlay.classList.add("hidden");
+  $btnPause.classList.remove("hidden");
+
+  // If at end, reset to beginning
+  if (parseInt($tempScrubber.value) >= simResults.length - 1) {
+    $tempScrubber.value = 0;
+  }
+
+  currentSpeed = parseInt($speedSelect.value);
+  startAnimation();
+}
+
+function onPauseClick() {
+  stopAnimation();
+  $btnPause.classList.add("hidden");
+  $btnPlay.classList.remove("hidden");
+}
+
+function onSpeedChange() {
+  currentSpeed = parseInt($speedSelect.value);
+  if (animationInterval) {
+    stopAnimation();
+    startAnimation();
+  }
+}
+
+function startAnimation() {
+  stopAnimation();
+  animationInterval = setInterval(() => {
+    const t0 = performance.now();
+    let idx = parseInt($tempScrubber.value) + 1;
+    if (idx >= simResults.length) {
+      stopAnimation();
+      $btnPause.classList.add("hidden");
+      $btnPlay.classList.remove("hidden");
+      return;
+    }
+    $tempScrubber.value = idx;
+    currentScrubberIndex = idx;
+
+    requestAnimationFrame(() => {
+      updateScrubberHighlight(idx);
+      detectAndShowToasts(idx);
+
+      // Adaptive speed: if update took too long, throttle
+      const elapsed = performance.now() - t0;
+      if (elapsed > currentSpeed * 1.5 && currentSpeed < 200) {
+        const speeds = [50, 100, 200];
+        const currentIdx = speeds.indexOf(currentSpeed);
+        if (currentIdx < speeds.length - 1) {
+          currentSpeed = speeds[currentIdx + 1];
+          $speedSelect.value = currentSpeed;
+          // Show throttle indicator
+          $scrubberInfo.textContent += " \u26a1 Slowed for performance";
+          stopAnimation();
+          startAnimation();
+        }
+      }
+    });
+  }, currentSpeed);
+}
+
+function stopAnimation() {
+  if (animationInterval) {
+    clearInterval(animationInterval);
+    animationInterval = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase-appearance toast notifications
+// ---------------------------------------------------------------------------
+function detectAndShowToasts(index) {
+  if (index <= 0 || index >= simResults.length) return;
+  const prev = simResults[index - 1].phases ? simResults[index - 1].phases.split("+").filter(Boolean) : [];
+  const curr = simResults[index].phases ? simResults[index].phases.split("+").filter(Boolean) : [];
+  const prevSet = new Set(prev);
+  const newPhases = curr.filter(p => !prevSet.has(p));
+
+  for (const phase of newPhases) {
+    const baseName = phase.replace(/\d+$/, "");
+    const displayName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+    showToast(`${displayName} crystallizes at ${simResults[index].T_C.toFixed(0)}\u00b0C`);
+  }
+}
+
+function showToast(message) {
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  $toastContainer.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add("fade-out");
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
 }

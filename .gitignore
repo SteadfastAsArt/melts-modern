@@ -16,6 +16,9 @@ alphamelts-app
 alphamelts-py
 lib
 
+# Node
+node_modules/
+
 # OS / editor
 .DS_Store
 *.swp

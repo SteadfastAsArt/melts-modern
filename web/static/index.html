@@ -32,8 +32,8 @@
             <option value="3">rhyolite-MELTS 1.1.0</option>
             <option value="4" selected>rhyolite-MELTS 1.2.0</option>
           </select>
-          <div id="pmelts-warning" class="warning hidden">
-            pMELTS valid range: 1000-2500 &deg;C, 1-3 GPa (10000-30000 bar)
+          <div class="mode-info" id="mode-info">
+            rhyolite-MELTS 1.2.0: 500–2000 °C, 0–3000 bar
           </div>
         </fieldset>
 
@@ -125,6 +125,21 @@
         <div class="progress-info" id="progress-info">Waiting...</div>
       </div>
 
+      <!-- Scrubber -->
+      <div class="scrubber-section hidden" id="scrubber-section">
+        <div class="scrubber-controls">
+          <button class="btn-play" id="btn-play" title="Play">&#9654;</button>
+          <button class="btn-pause hidden" id="btn-pause" title="Pause">&#9646;&#9646;</button>
+          <select class="speed-select" id="speed-select">
+            <option value="200">Slow</option>
+            <option value="100" selected>Normal</option>
+            <option value="50">Fast</option>
+          </select>
+          <input type="range" id="temp-scrubber" min="0" max="0" value="0" class="temp-scrubber">
+        </div>
+        <div class="scrubber-info" id="scrubber-info"></div>
+      </div>
+
       <!-- Error display -->
       <div id="error-display" class="error-display hidden"></div>
 
@@ -151,10 +166,8 @@
 
         <!-- Harker -->
         <div class="tab-pane" data-pane="harker">
-          <div class="plot-grid-2">
-            <div class="plot-container" id="plot-harker-mgo"></div>
-            <div class="plot-container" id="plot-harker-sio2"></div>
-          </div>
+          <div class="plot-container" id="plot-harker-mgo"></div>
+          <div class="plot-container" id="plot-harker-sio2"></div>
           <div class="plot-container" id="plot-mg-vs-sio2"></div>
         </div>
 
@@ -165,29 +178,23 @@
 
         <!-- Evolution -->
         <div class="tab-pane" data-pane="evolution">
-          <div class="plot-grid-2">
-            <div class="plot-container" id="plot-evolution"></div>
-            <div class="plot-container" id="plot-liquid-vs-temp"></div>
-          </div>
+          <div class="plot-container" id="plot-evolution"></div>
+          <div class="plot-container" id="plot-liquid-vs-temp"></div>
         </div>
 
         <!-- Phase Details -->
         <div class="tab-pane" data-pane="phases">
           <div class="plot-container" id="plot-phase-masses"></div>
-          <div class="plot-grid-2x2">
-            <div class="plot-container" id="plot-olivine"></div>
-            <div class="plot-container" id="plot-cpx"></div>
-            <div class="plot-container" id="plot-plagioclase"></div>
-            <div class="plot-container" id="plot-spinel"></div>
-          </div>
+          <div class="plot-container" id="plot-olivine"></div>
+          <div class="plot-container" id="plot-cpx"></div>
+          <div class="plot-container" id="plot-plagioclase"></div>
+          <div class="plot-container" id="plot-spinel"></div>
         </div>
 
         <!-- System Properties -->
         <div class="tab-pane" data-pane="system">
-          <div class="plot-grid-2">
-            <div class="plot-container" id="plot-system-thermo"></div>
-            <div class="plot-container" id="plot-density"></div>
-          </div>
+          <div class="plot-container" id="plot-system-thermo"></div>
+          <div class="plot-container" id="plot-density"></div>
         </div>
 
         <!-- Data Table -->
@@ -219,6 +226,7 @@
         <p>Choose a preset composition or enter your own, set P-T conditions, and click <strong>Run Simulation</strong>.</p>
       </div>
     </main>
+    <div class="toast-container" id="toast-container"></div>
   </div>
 
   <script src="/static/app.js"></script>

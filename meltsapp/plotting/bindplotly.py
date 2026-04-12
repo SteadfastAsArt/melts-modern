@@ -27,8 +27,8 @@ from .common import (
 # Shared style helpers
 # ------------------------------------------------------------------
 
-_FONT_FAMILY = "Arial, sans-serif"
-_FONT_TITLE = 12
+_FONT_FAMILY = "Inter, -apple-system, BlinkMacSystemFont, sans-serif"
+_FONT_TITLE = 14
 _FONT_AXIS = 10
 _MARKER_SIZE = 5
 _LINE_WIDTH_DATA = 2
@@ -40,11 +40,12 @@ _COLORSCALE_MELT = "plasma"
 def _base_layout(**overrides) -> dict:
     """Return common layout kwargs."""
     defaults = dict(
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        plot_bgcolor="#fafbfc",
+        paper_bgcolor="#fafbfc",
         font=dict(family=_FONT_FAMILY, size=_FONT_AXIS),
         title_font=dict(family=_FONT_FAMILY, size=_FONT_TITLE),
         margin=dict(l=60, r=30, t=50, b=50),
+        hoverlabel=dict(bgcolor="white", bordercolor="#ddd", font_size=12),
     )
     defaults.update(overrides)
     return defaults
@@ -54,7 +55,7 @@ def _axis_style() -> dict:
     """Common axis configuration."""
     return dict(
         showgrid=True,
-        gridcolor="#eeeeee",
+        gridcolor="#e8ecf0",
         zeroline=False,
         showline=True,
         linecolor="black",
@@ -80,6 +81,7 @@ def _ensure_derived(df: pd.DataFrame) -> pd.DataFrame:
 def fig_tas(df: pd.DataFrame) -> go.Figure:
     """TAS classification diagram (Le Maitre 2002)."""
     df = _ensure_derived(df)
+    df = df[df["mass_liquid_g"] > 0.01].copy()
 
     fig = go.Figure()
 
@@ -187,6 +189,7 @@ def fig_tas(df: pd.DataFrame) -> go.Figure:
 def fig_harker_mgo(df: pd.DataFrame) -> go.Figure:
     """3x3 MgO variation (Harker-style) diagrams."""
     df = _ensure_derived(df)
+    df = df[df["mass_liquid_g"] > 0.01].copy()
 
     oxides = [
         ("liq_SiO2", "SiO\u2082 (wt%)"),
@@ -243,7 +246,6 @@ def fig_harker_mgo(df: pd.DataFrame) -> go.Figure:
         **_base_layout(
             title="MgO Variation Diagrams \u2014 Liquid Line of Descent",
             height=800,
-            width=1000,
         )
     )
     return fig
@@ -253,6 +255,7 @@ def fig_harker_mgo(df: pd.DataFrame) -> go.Figure:
 def fig_harker_sio2(df: pd.DataFrame) -> go.Figure:
     """3x3 SiO2 Harker diagrams."""
     df = _ensure_derived(df)
+    df = df[df["mass_liquid_g"] > 0.01].copy()
 
     oxides = [
         ("liq_Al2O3", "Al\u2082O\u2083 (wt%)"),
@@ -309,7 +312,6 @@ def fig_harker_sio2(df: pd.DataFrame) -> go.Figure:
         **_base_layout(
             title="Harker Diagrams \u2014 Liquid Composition vs SiO\u2082",
             height=800,
-            width=1000,
         )
     )
     return fig
@@ -384,6 +386,7 @@ def fig_pt_path(df: pd.DataFrame) -> go.Figure:
 def fig_afm(df: pd.DataFrame) -> go.Figure:
     """AFM ternary diagram with Irvine-Baragar dividing line."""
     df = _ensure_derived(df)
+    df = df[df["mass_liquid_g"] > 0.01].copy()
 
     A = df["liq_Na2O"] + df["liq_K2O"]
     F = df["FeOt"]
@@ -482,7 +485,6 @@ def fig_afm(df: pd.DataFrame) -> go.Figure:
             showticklabels=False,
             showline=False,
         ),
-        width=650,
         height=600,
     )
     return fig
@@ -492,6 +494,7 @@ def fig_afm(df: pd.DataFrame) -> go.Figure:
 def fig_evolution(df: pd.DataFrame) -> go.Figure:
     """2x3 multi-panel magma evolution vs temperature."""
     df = _ensure_derived(df)
+    df = df[df["mass_liquid_g"] > 0.01].copy()
     phase_events = detect_phase_events(df)
 
     fig = make_subplots(
@@ -649,7 +652,6 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
         **_base_layout(
             title="Magma Evolution During Decompression Crystallization",
             height=650,
-            width=1100,
         ),
         legend=dict(font=dict(size=8)),
     )
@@ -737,6 +739,7 @@ def fig_phase_masses(df: pd.DataFrame, phase_data: pd.DataFrame) -> go.Figure:
 def fig_liquid_vs_temp(df: pd.DataFrame) -> go.Figure:
     """2x4 liquid composition vs temperature."""
     df = _ensure_derived(df)
+    df = df[df["mass_liquid_g"] > 0.01].copy()
 
     oxides = [
         ("liq_SiO2", "SiO\u2082", "#d62728"),
@@ -790,7 +793,6 @@ def fig_liquid_vs_temp(df: pd.DataFrame) -> go.Figure:
         **_base_layout(
             title="Liquid Composition vs Temperature",
             height=600,
-            width=1200,
         )
     )
     return fig
@@ -859,7 +861,6 @@ def fig_system_thermo(df_sys: pd.DataFrame) -> go.Figure:
         **_base_layout(
             title="System Thermodynamic Properties",
             height=650,
-            width=1000,
         )
     )
     return fig
@@ -987,7 +988,7 @@ def fig_olivine(phase_data: pd.DataFrame) -> go.Figure:
     fig.update_yaxes(title_text="Mass (g)", row=1, col=2, **_axis_style())
 
     fig.update_layout(
-        **_base_layout(title="Olivine Properties", height=400, width=850)
+        **_base_layout(title="Olivine Properties", height=400)
     )
     return fig
 
@@ -1061,7 +1062,7 @@ def fig_cpx(phase_data: pd.DataFrame) -> go.Figure:
     fig.update_yaxes(title_text="Mg# [molar, Fe\u00b2\u207a only]", row=1, col=2, **_axis_style())
 
     fig.update_layout(
-        **_base_layout(title="Clinopyroxene Properties", height=400, width=850),
+        **_base_layout(title="Clinopyroxene Properties", height=400),
         legend=dict(x=0.01, y=0.99, font=dict(size=8)),
     )
     return fig
@@ -1121,7 +1122,7 @@ def fig_plagioclase(phase_data: pd.DataFrame) -> go.Figure:
     fig.update_yaxes(title_text="Mass (g)", row=1, col=2, **_axis_style())
 
     fig.update_layout(
-        **_base_layout(title="Plagioclase Properties", height=400, width=850)
+        **_base_layout(title="Plagioclase Properties", height=400)
     )
     return fig
 
@@ -1199,7 +1200,7 @@ def fig_spinel(phase_data: pd.DataFrame) -> go.Figure:
     fig.update_yaxes(title_text="Cr# [molar]", row=1, col=2, **_axis_style())
 
     fig.update_layout(
-        **_base_layout(title="Spinel Properties", height=400, width=850),
+        **_base_layout(title="Spinel Properties", height=400),
         legend=dict(x=0.01, y=0.99, font=dict(size=8)),
     )
     return fig
@@ -1209,6 +1210,7 @@ def fig_spinel(phase_data: pd.DataFrame) -> go.Figure:
 def fig_mg_vs_sio2(df: pd.DataFrame) -> go.Figure:
     """Mg# vs SiO2 differentiation index, coloured by temperature."""
     df = _ensure_derived(df)
+    df = df[df["mass_liquid_g"] > 0.01].copy()
 
     fig = go.Figure()
     fig.add_trace(
