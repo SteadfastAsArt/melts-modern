@@ -1,3 +1,41 @@
+# MELTS Modern
+
+Web-based interactive frontend for rhyolite-MELTS thermodynamic modeling.
+
+## Architecture
+
+- **meltsapp/** — Python package wrapping the MELTS C library via meltsdynamic/meltsengine
+  - `engine.py` — `MeltsSession` class with fd-redirection (C library stdout → /dev/null)
+  - `simulation.py` — `run_crystallization()` generator yielding StepResult per temperature step
+  - `schemas.py` — Pydantic `SimConfig` + dataclass `StepResult`/`PhaseDetail`
+  - `presets.py` — 5 named compositions with T/P defaults
+  - `plotting/bindplotly.py` — 15 Plotly figure builders, all use `_base_layout()`/`_axis_style()`
+  - `plotting/common.py` — TAS boundaries, AFM coords, PHASE_COLORS, derived-column calculator
+- **web/** — FastAPI app, one worker subprocess per simulation (C library is a global singleton)
+  - `app.py` — REST endpoints + WebSocket streaming
+  - `worker.py` — subprocess reading SimConfig from stdin, emitting JSON lines to stdout
+  - `static/` — vanilla HTML/CSS/JS SPA with Plotly charts
+- **External deps (symlinked):** `alphamelts-app`, `alphamelts-py`, `lib/`
+
+## Key patterns
+
+- `simResults[i].phases` is a `+`-delimited string, not an array. Split on `+`, strip trailing digits for display names.
+- Plotly figure width is NOT set in Python — `responsive: true` in JS handles sizing.
+- Multi-panel charts (Harker 3x3, Evolution 2x3, etc.) each occupy their own full-width row.
+- Filter `df[df["mass_liquid_g"] > 0.01]` in all liquid-composition plots to avoid (0,0) outliers.
+
+## Testing
+
+```bash
+pytest tests/                 # Python: 23 smoke tests for all fig_ functions
+npx vitest run                # JS: 17 unit tests for scrubber logic
+```
+
+## Running
+
+```bash
+python -c "import uvicorn; from web.app import app; uvicorn.run(app, host='0.0.0.0', port=9000)"
+```
 
 ## Skill routing
 
