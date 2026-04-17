@@ -133,6 +133,36 @@
           <button type="button" class="btn-link" id="toggle-phases">Customize phases...</button>
         </fieldset>
 
+        <!-- Batch mode -->
+        <fieldset id="batch-fieldset">
+          <legend>Batch Mode</legend>
+          <div class="batch-toggle-row">
+            <label class="toggle-label">
+              <input type="checkbox" id="batch-toggle"> Enable parameter sweep
+            </label>
+          </div>
+          <div class="batch-config hidden" id="batch-config">
+            <div class="input-row">
+              <label>Sweep Parameter
+                <select id="sweep-param">
+                  <option value="H2O">H&#8322;O (wt%)</option>
+                  <option value="pressure">Pressure (bar)</option>
+                  <option value="fo2_offset">fO&#8322; Offset</option>
+                  <option value="temperature">T Start (&deg;C)</option>
+                </select>
+              </label>
+            </div>
+            <div class="input-row" style="margin-top: 8px;">
+              <label>From<input type="number" id="sweep-from" value="0" step="0.5"></label>
+              <label>To<input type="number" id="sweep-to" value="4" step="0.5"></label>
+              <label>Steps<input type="number" id="sweep-steps" value="5" min="2" max="10" step="1"></label>
+            </div>
+            <div class="sweep-preview" id="sweep-preview">
+              Values: 0.0, 1.0, 2.0, 3.0, 4.0
+            </div>
+          </div>
+        </fieldset>
+
         <button type="submit" class="btn-run" id="btn-run">
           <span class="btn-run-label">Run Simulation</span>
           <span class="btn-run-spinner hidden"></span>

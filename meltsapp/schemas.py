@@ -61,6 +61,29 @@ class SimConfig(BaseModel):
     """List of phase names to suppress during the calculation."""
 
 
+class SweepParam(BaseModel):
+    """A single parameter sweep configuration."""
+
+    param: Literal["H2O", "pressure", "fo2_offset", "temperature"]
+    """Which parameter to vary across runs."""
+
+    values: list[float]
+    """Explicit values to use for each run."""
+
+    labels: list[str] = []
+    """Optional labels for each value (auto-generated if empty)."""
+
+
+class BatchConfig(BaseModel):
+    """Configuration for a batch of simulations with parameter sweeps."""
+
+    base_config: SimConfig
+    """The base simulation configuration (all shared parameters)."""
+
+    sweep: SweepParam
+    """The parameter to sweep across runs."""
+
+
 @dataclass
 class PhaseDetail:
     """Thermodynamic and compositional data for a single phase at one step."""
