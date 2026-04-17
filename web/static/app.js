@@ -67,6 +67,8 @@ const TAB_PLOTS = {
 // State
 // ---------------------------------------------------------------------------
 let currentSimId = null;
+let currentBatchId = null;
+let batchMode = false;
 let presets = {};
 let plotCache = {};       // { "simId:plotType": true } — tracks fetched plots
 let simResults = [];      // accumulated results for data table
@@ -108,6 +110,13 @@ const $btnPlay = document.getElementById("btn-play");
 const $btnPause = document.getElementById("btn-pause");
 const $speedSelect = document.getElementById("speed-select");
 const $toastContainer = document.getElementById("toast-container");
+const $batchToggle = document.getElementById("batch-toggle");
+const $batchConfig = document.getElementById("batch-config");
+const $sweepParam = document.getElementById("sweep-param");
+const $sweepFrom = document.getElementById("sweep-from");
+const $sweepTo = document.getElementById("sweep-to");
+const $sweepSteps = document.getElementById("sweep-steps");
+const $sweepPreview = document.getElementById("sweep-preview");
 
 // ---------------------------------------------------------------------------
 // Initialization
@@ -188,6 +197,20 @@ function bindEvents() {
   ["T-start", "T-end", "P-start", "P-end"].forEach((id) => {
     document.getElementById(id).addEventListener("input", updateDpDt);
   });
+
+  // Batch mode toggle
+  $batchToggle.addEventListener("change", (e) => {
+    batchMode = e.target.checked;
+    $batchConfig.classList.toggle("hidden", !batchMode);
+    $btnRun.querySelector(".btn-run-label").textContent =
+      batchMode ? "Run Batch" : "Run Simulation";
+  });
+
+  // Update sweep preview when inputs change
+  [$sweepFrom, $sweepTo, $sweepSteps].forEach((el) => {
+    el.addEventListener("input", updateSweepPreview);
+  });
+  $sweepParam.addEventListener("change", updateSweepPreview);
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +269,23 @@ function updateDpDt() {
   $dpDtDisplay.textContent = `dP/dT = ${dpdt.toFixed(1)} bar/\u00b0C`;
 }
 
+function updateSweepPreview() {
+  const from = parseFloat($sweepFrom.value);
+  const to = parseFloat($sweepTo.value);
+  const steps = parseInt($sweepSteps.value);
+  if (isNaN(from) || isNaN(to) || isNaN(steps) || steps < 2) {
+    $sweepPreview.textContent = "Values: (invalid)";
+    return;
+  }
+  const values = [];
+  for (let i = 0; i < steps; i++) {
+    values.push(from + (to - from) * i / (steps - 1));
+  }
+  const paramName = $sweepParam.options[$sweepParam.selectedIndex].textContent;
+  $sweepPreview.textContent =
+    `Values: ${values.map((v) => v.toFixed(1)).join(", ")} (${paramName})`;
+}
+
 // ---------------------------------------------------------------------------
 // Form submission
 // ---------------------------------------------------------------------------
@@ -289,7 +329,29 @@ function onFormSubmit(e) {
     return;
   }
 
-  startSimulation(config);
+  if (batchMode) {
+    const from = parseFloat($sweepFrom.value);
+    const to = parseFloat($sweepTo.value);
+    const steps = parseInt($sweepSteps.value);
+    if (isNaN(from) || isNaN(to) || isNaN(steps) || steps < 2) {
+      showError("Invalid sweep parameters. Need From, To, and Steps >= 2.");
+      return;
+    }
+    const values = [];
+    for (let i = 0; i < steps; i++) {
+      values.push(from + (to - from) * i / (steps - 1));
+    }
+    const batchConfig = {
+      base_config: config,
+      sweep: {
+        param: $sweepParam.value,
+        values: values,
+      },
+    };
+    startBatch(batchConfig);
+  } else {
+    startSimulation(config);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -302,8 +364,9 @@ async function startSimulation(config) {
   simResults = [];
   plotCache = {};
   currentSimId = null;
+  currentBatchId = null;
   $btnRun.disabled = true;
-  $btnRun.textContent = "Running...";
+  $btnRun.querySelector(".btn-run-label").textContent = "Running...";
   $emptyState.classList.add("hidden");
   $errorDisplay.classList.add("hidden");
   $progressSection.classList.remove("hidden");
@@ -416,7 +479,160 @@ function onSimulationComplete(simId) {
 function resetRunButton() {
   simRunning = false;
   $btnRun.disabled = false;
-  $btnRun.textContent = "Run Simulation";
+  $btnRun.querySelector(".btn-run-label").textContent =
+    batchMode ? "Run Batch" : "Run Simulation";
+}
+
+// ---------------------------------------------------------------------------
+// Batch simulation lifecycle
+// ---------------------------------------------------------------------------
+async function startBatch(batchConfig) {
+  stopAnimation();
+  clearAllHighlights();
+  simRunning = true;
+  simResults = [];
+  plotCache = {};
+  currentSimId = null;
+  currentBatchId = null;
+  $btnRun.disabled = true;
+  $btnRun.querySelector(".btn-run-label").textContent = "Running Batch...";
+  $emptyState.classList.add("hidden");
+  $errorDisplay.classList.add("hidden");
+  $progressSection.classList.remove("hidden");
+  $progressBar.style.width = "0%";
+  $progressInfo.textContent = "Starting batch...";
+  $scrubberSection.classList.add("hidden");
+
+  clearAllPlots();
+
+  try {
+    const resp = await fetch("/api/batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(batchConfig),
+    });
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    currentBatchId = data.batch_id;
+
+    pollBatch(data.batch_id, data.total_runs);
+  } catch (err) {
+    showError(`Failed to start batch: ${err.message}`);
+    resetRunButton();
+  }
+}
+
+function pollBatch(batchId, totalRuns) {
+  const pollInterval = setInterval(async () => {
+    try {
+      const resp = await fetch(`/api/batch/${batchId}/status`);
+      if (!resp.ok) { clearInterval(pollInterval); return; }
+      const data = await resp.json();
+
+      // Update progress
+      const completedRuns = data.runs.filter((r) => r.status === "done").length;
+      const pct = (completedRuns / totalRuns) * 100;
+      $progressBar.style.width = pct.toFixed(1) + "%";
+
+      const currentRun = data.runs.find((r) => r.status === "running");
+      if (currentRun) {
+        $progressInfo.textContent =
+          `Run ${completedRuns + 1}/${totalRuns}: ${currentRun.label} (${currentRun.n_results} steps)`;
+      } else {
+        $progressInfo.textContent = `Completed ${completedRuns}/${totalRuns} runs`;
+      }
+
+      if (data.status === "done") {
+        clearInterval(pollInterval);
+        onBatchComplete(batchId, data);
+      } else if (data.status === "error") {
+        clearInterval(pollInterval);
+        showError("Batch failed.");
+        resetRunButton();
+      }
+    } catch (e) {
+      console.warn("Batch poll error:", e);
+    }
+  }, 1000);
+}
+
+function onBatchComplete(batchId, batchData) {
+  simRunning = false;
+  resetRunButton();
+  $progressBar.style.width = "100%";
+  $progressInfo.textContent =
+    `Batch complete. ${batchData.total_runs} runs finished.`;
+
+  // Hide scrubber for batch mode (not applicable to multi-run comparison)
+  $scrubberSection.classList.add("hidden");
+
+  // Store batch info for plot fetching
+  currentBatchId = batchId;
+  currentSimId = null;
+
+  // Fetch comparison plots for active tab
+  const activeTab = document.querySelector(".tab.active");
+  if (activeTab) {
+    fetchComparisonPlotsForTab(activeTab.dataset.tab, batchId);
+  }
+}
+
+// Comparison plot types available per tab
+const COMPARE_PLOTS = {
+  classification: [
+    { divId: "plot-tas", plotType: "tas" },
+  ],
+  harker: [
+    { divId: "plot-harker-mgo", plotType: "harker_mgo" },
+  ],
+  "pt-path": [
+    { divId: "plot-pt-path", plotType: "pt_path" },
+  ],
+  evolution: [
+    { divId: "plot-evolution", plotType: "evolution" },
+  ],
+};
+
+async function fetchComparisonPlotsForTab(tabName, batchId) {
+  const plots = COMPARE_PLOTS[tabName];
+  if (!plots) return;
+
+  for (const { divId, plotType } of plots) {
+    const cacheKey = `batch:${batchId}:${plotType}`;
+    if (plotCache[cacheKey]) continue;
+
+    const container = document.getElementById(divId);
+    if (!container) continue;
+    container.innerHTML = '<div class="plot-loading">Loading comparison...</div>';
+
+    try {
+      const resp = await fetch(`/api/batch/${batchId}/compare/${plotType}`);
+      if (!resp.ok) {
+        const errText = await resp.text();
+        container.innerHTML = `<div class="plot-error">Comparison not available: ${errText}</div>`;
+        continue;
+      }
+      const figJson = await resp.json();
+      container.innerHTML = "";
+      const layout = figJson.layout || {};
+      layout.autosize = true;
+
+      Plotly.newPlot(container, figJson.data, layout, {
+        responsive: true,
+        displayModeBar: true,
+        modeBarButtonsToRemove: ["lasso2d", "select2d"],
+      });
+
+      plotCache[cacheKey] = true;
+    } catch (err) {
+      container.innerHTML = `<div class="plot-error">Failed: ${err.message}</div>`;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -446,8 +662,10 @@ function switchTab(tabName) {
     renderDataTable();
   }
 
-  // Fetch plots for this tab if we have a sim
-  if (currentSimId && simResults.length > 0) {
+  // Fetch plots for this tab if we have a sim or batch
+  if (currentBatchId) {
+    fetchComparisonPlotsForTab(tabName, currentBatchId);
+  } else if (currentSimId && simResults.length > 0) {
     fetchPlotsForTab(tabName, currentSimId);
   }
 }

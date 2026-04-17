@@ -1240,3 +1240,313 @@ def fig_mg_vs_sio2(df: pd.DataFrame) -> go.Figure:
         yaxis=dict(title="Mg# [molar, Fe\u00b2\u207a only]", **_axis_style()),
     )
     return fig
+
+
+# ===================================================================
+# Batch comparison figures — multi-run overlay
+# ===================================================================
+
+COMPARE_COLORS = [
+    "#3b82f6",  # blue
+    "#ef4444",  # red
+    "#10b981",  # green
+    "#f59e0b",  # amber
+    "#8b5cf6",  # purple
+    "#ec4899",  # pink
+    "#06b6d4",  # cyan
+    "#f97316",  # orange
+]
+
+
+def _compare_color(index: int) -> str:
+    """Return a color for the i-th dataset in a comparison plot."""
+    return COMPARE_COLORS[index % len(COMPARE_COLORS)]
+
+
+# -------------------------------------------------------------------
+def fig_tas_compare(datasets: list[dict]) -> go.Figure:
+    """TAS classification diagram with multiple runs overlaid.
+
+    Parameters
+    ----------
+    datasets : list of dict
+        Each dict has keys ``"label"`` (str) and ``"df"`` (DataFrame).
+    """
+    fig = go.Figure()
+
+    # -- TAS boundary lines (same as fig_tas) --
+    for seg in TAS_BOUNDARIES:
+        xs, ys = zip(*seg)
+        fig.add_trace(
+            go.Scatter(
+                x=list(xs), y=list(ys),
+                mode="lines",
+                line=dict(color="#888888", width=0.8),
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+
+    # -- Field labels --
+    for name, (lx, ly) in TAS_LABELS.items():
+        fig.add_annotation(
+            x=lx, y=ly,
+            text=name.replace("\n", "<br>"),
+            showarrow=False,
+            font=dict(size=8, color="#999999", family=_FONT_FAMILY),
+            xanchor="center", yanchor="middle",
+        )
+
+    # -- One trace per dataset --
+    for i, ds in enumerate(datasets):
+        df = _ensure_derived(ds["df"])
+        df = df[df["mass_liquid_g"] > 0.01].copy()
+        color = _compare_color(i)
+        fig.add_trace(
+            go.Scatter(
+                x=df["liq_SiO2"],
+                y=df["Na2O_K2O"],
+                mode="markers+lines",
+                marker=dict(size=_MARKER_SIZE, color=color),
+                line=dict(color=color, width=1.5),
+                name=ds["label"],
+                hovertemplate=(
+                    f"{ds['label']}<br>"
+                    "SiO2=%{x:.1f}<br>Alk=%{y:.1f}<extra></extra>"
+                ),
+            )
+        )
+
+    fig.update_layout(
+        **_base_layout(title="TAS Classification \u2014 Parameter Sweep Comparison"),
+        xaxis=dict(title="SiO\u2082 (wt%)", range=[40, 72], **_axis_style()),
+        yaxis=dict(title="Na\u2082O + K\u2082O (wt%)", range=[0, 10], **_axis_style()),
+        legend=dict(x=0.01, y=0.99, font=dict(size=9)),
+    )
+    return fig
+
+
+# -------------------------------------------------------------------
+def fig_harker_mgo_compare(datasets: list[dict]) -> go.Figure:
+    """3x3 MgO variation diagrams with multiple runs overlaid."""
+    oxides = [
+        ("liq_SiO2", "SiO\u2082 (wt%)"),
+        ("liq_Al2O3", "Al\u2082O\u2083 (wt%)"),
+        ("FeOt", "FeO* (wt%)"),
+        ("liq_CaO", "CaO (wt%)"),
+        ("liq_Na2O", "Na\u2082O (wt%)"),
+        ("liq_K2O", "K\u2082O (wt%)"),
+        ("liq_TiO2", "TiO\u2082 (wt%)"),
+        ("liq_H2O", "H\u2082O (wt%)"),
+        ("liq_P2O5", "P\u2082O\u2085 (wt%)"),
+    ]
+
+    fig = make_subplots(
+        rows=3, cols=3,
+        subplot_titles=[label for _, label in oxides],
+        horizontal_spacing=0.08,
+        vertical_spacing=0.10,
+    )
+
+    for idx, (col, label) in enumerate(oxides):
+        r = idx // 3 + 1
+        c = idx % 3 + 1
+        for i, ds in enumerate(datasets):
+            df = _ensure_derived(ds["df"])
+            df = df[df["mass_liquid_g"] > 0.01].copy()
+            color = _compare_color(i)
+            # Only show legend on first subplot to avoid duplicates
+            show_legend = (idx == 0)
+            fig.add_trace(
+                go.Scatter(
+                    x=df["liq_MgO"],
+                    y=df[col],
+                    mode="markers",
+                    marker=dict(size=_MARKER_SIZE - 1, color=color, opacity=0.7),
+                    name=ds["label"],
+                    showlegend=show_legend,
+                    legendgroup=ds["label"],
+                    hovertemplate=(
+                        f"{ds['label']}<br>"
+                        f"MgO=%{{x:.2f}}  {label.split()[0]}=%{{y:.2f}}<extra></extra>"
+                    ),
+                ),
+                row=r, col=c,
+            )
+        fig.update_xaxes(title_text="MgO (wt%)", row=r, col=c, **_axis_style())
+        fig.update_yaxes(title_text=label, row=r, col=c, **_axis_style())
+
+    fig.update_layout(
+        **_base_layout(
+            title="MgO Variation \u2014 Parameter Sweep Comparison",
+            height=800,
+        ),
+        legend=dict(x=0.01, y=1.06, orientation="h", font=dict(size=8)),
+    )
+    return fig
+
+
+# -------------------------------------------------------------------
+def fig_evolution_compare(datasets: list[dict]) -> go.Figure:
+    """2x3 magma evolution panels with multiple runs overlaid."""
+    fig = make_subplots(
+        rows=2, cols=3,
+        subplot_titles=[
+            "Liquid Remaining",
+            "SiO\u2082",
+            "Mg#",
+            "FeO* & MgO",
+            "Al\u2082O\u2083, CaO, Na\u2082O",
+            "H\u2082O",
+        ],
+        horizontal_spacing=0.08,
+        vertical_spacing=0.12,
+    )
+
+    for i, ds in enumerate(datasets):
+        df = _ensure_derived(ds["df"])
+        df = df[df["mass_liquid_g"] > 0.01].copy()
+        color = _compare_color(i)
+        T = df["T_C"]
+        lbl = ds["label"]
+        show = (i == 0)  # only first dataset's traces show in legend at first
+
+        # Panel (1,1): liquid fraction
+        fig.add_trace(
+            go.Scatter(
+                x=T, y=df["liquid_frac"], mode="lines",
+                line=dict(color=color, width=_LINE_WIDTH_DATA),
+                name=lbl, showlegend=True,
+                legendgroup=lbl,
+                hovertemplate=f"{lbl}<br>T=%{{x:.0f}}\u00b0C<br>Liq=%{{y:.1f}}%<extra></extra>",
+            ),
+            row=1, col=1,
+        )
+
+        # Panel (1,2): SiO2
+        fig.add_trace(
+            go.Scatter(
+                x=T, y=df["liq_SiO2"], mode="lines",
+                line=dict(color=color, width=_LINE_WIDTH_DATA),
+                showlegend=False, legendgroup=lbl,
+                hovertemplate=f"{lbl}<br>T=%{{x:.0f}}\u00b0C<br>SiO2=%{{y:.1f}}%<extra></extra>",
+            ),
+            row=1, col=2,
+        )
+
+        # Panel (1,3): Mg#
+        fig.add_trace(
+            go.Scatter(
+                x=T, y=df["Mg_number"], mode="lines",
+                line=dict(color=color, width=_LINE_WIDTH_DATA),
+                showlegend=False, legendgroup=lbl,
+                hovertemplate=f"{lbl}<br>T=%{{x:.0f}}\u00b0C<br>Mg#=%{{y:.1f}}<extra></extra>",
+            ),
+            row=1, col=3,
+        )
+
+        # Panel (2,1): FeOt (solid) and MgO (dash)
+        fig.add_trace(
+            go.Scatter(
+                x=T, y=df["FeOt"], mode="lines",
+                line=dict(color=color, width=_LINE_WIDTH_DATA),
+                showlegend=False, legendgroup=lbl,
+                hovertemplate=f"{lbl}<br>T=%{{x:.0f}}\u00b0C<br>FeO*=%{{y:.2f}}%<extra></extra>",
+            ),
+            row=2, col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=T, y=df["liq_MgO"], mode="lines",
+                line=dict(color=color, width=_LINE_WIDTH_DATA, dash="dash"),
+                showlegend=False, legendgroup=lbl,
+                hovertemplate=f"{lbl}<br>T=%{{x:.0f}}\u00b0C<br>MgO=%{{y:.2f}}%<extra></extra>",
+            ),
+            row=2, col=1,
+        )
+
+        # Panel (2,2): Al2O3 (solid), CaO (dash), Na2O (dot)
+        for col_name, dash_style in [
+            ("liq_Al2O3", "solid"),
+            ("liq_CaO", "dash"),
+            ("liq_Na2O", "dot"),
+        ]:
+            fig.add_trace(
+                go.Scatter(
+                    x=T, y=df[col_name], mode="lines",
+                    line=dict(color=color, width=_LINE_WIDTH_DATA, dash=dash_style),
+                    showlegend=False, legendgroup=lbl,
+                    hovertemplate=(
+                        f"{lbl}<br>T=%{{x:.0f}}\u00b0C<br>"
+                        f"{col_name.replace('liq_', '')}=%{{y:.2f}}%<extra></extra>"
+                    ),
+                ),
+                row=2, col=2,
+            )
+
+        # Panel (2,3): H2O
+        fig.add_trace(
+            go.Scatter(
+                x=T, y=df["liq_H2O"], mode="lines",
+                line=dict(color=color, width=_LINE_WIDTH_DATA),
+                showlegend=False, legendgroup=lbl,
+                hovertemplate=f"{lbl}<br>T=%{{x:.0f}}\u00b0C<br>H2O=%{{y:.2f}}%<extra></extra>",
+            ),
+            row=2, col=3,
+        )
+
+    # Axis labels and reverse x
+    fig.update_yaxes(title_text="Liquid (%)", row=1, col=1)
+    fig.update_yaxes(title_text="SiO\u2082 (wt%)", row=1, col=2)
+    fig.update_yaxes(title_text="Mg#", row=1, col=3)
+    fig.update_yaxes(title_text="wt%", row=2, col=1)
+    fig.update_yaxes(title_text="wt%", row=2, col=2)
+    fig.update_yaxes(title_text="H\u2082O (wt%)", row=2, col=3)
+
+    for r in range(1, 3):
+        for c in range(1, 4):
+            fig.update_xaxes(
+                title_text="Temperature (\u00b0C)", autorange="reversed",
+                row=r, col=c, **_axis_style(),
+            )
+
+    fig.update_layout(
+        **_base_layout(
+            title="Magma Evolution \u2014 Parameter Sweep Comparison",
+            height=650,
+        ),
+        legend=dict(x=0.01, y=1.06, orientation="h", font=dict(size=8)),
+    )
+    return fig
+
+
+# -------------------------------------------------------------------
+def fig_pt_path_compare(datasets: list[dict]) -> go.Figure:
+    """P-T path with multiple runs overlaid."""
+    fig = go.Figure()
+
+    for i, ds in enumerate(datasets):
+        df = _ensure_derived(ds["df"])
+        color = _compare_color(i)
+        fig.add_trace(
+            go.Scatter(
+                x=df["T_C"],
+                y=df["P_bar"] / 1000,
+                mode="markers+lines",
+                marker=dict(size=_MARKER_SIZE - 1, color=color),
+                line=dict(color=color, width=1.5),
+                name=ds["label"],
+                hovertemplate=(
+                    f"{ds['label']}<br>"
+                    "T=%{x:.0f}\u00b0C<br>P=%{y:.2f} kbar<extra></extra>"
+                ),
+            )
+        )
+
+    fig.update_layout(
+        **_base_layout(title="P\u2013T Path \u2014 Parameter Sweep Comparison"),
+        xaxis=dict(title="Temperature (\u00b0C)", **_axis_style()),
+        yaxis=dict(title="Pressure (kbar)", autorange="reversed", **_axis_style()),
+        legend=dict(x=0.01, y=0.99, font=dict(size=9)),
+    )
+    return fig

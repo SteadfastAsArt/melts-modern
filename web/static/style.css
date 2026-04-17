@@ -943,6 +943,87 @@ body {
   }
 }
 
+/* ---------- Batch mode ---------- */
+.batch-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: #cbd5e1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #3b82f6;
+  cursor: pointer;
+}
+
+.batch-config {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.sweep-preview {
+  font-size: 0.72rem;
+  color: #93c5fd;
+  margin-top: 8px;
+  font-style: italic;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+/* Batch progress info — run labels in progress bar area */
+.batch-run-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.batch-run-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  background: #e2e8f0;
+  color: #475569;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.batch-run-chip.running {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
+  animation: chip-pulse 1.5s ease-in-out infinite;
+}
+
+.batch-run-chip.done {
+  background: rgba(16, 185, 129, 0.15);
+  color: #059669;
+}
+
+.batch-run-chip.pending {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+@keyframes chip-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 /* ---------- Utility: hidden helper ---------- */
 .hidden {
   display: none !important;

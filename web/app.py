@@ -34,7 +34,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from meltsapp import OX
 from meltsapp.presets import PRESETS
-from meltsapp.schemas import SimConfig
+from meltsapp.schemas import BatchConfig, SimConfig
 
 # ---------------------------------------------------------------------------
 # Simulation state
@@ -56,6 +56,22 @@ class SimState:
 
 
 SIMULATIONS: dict[str, SimState] = {}
+
+
+@dataclass
+class BatchState:
+    """Track a batch of simulations (parameter sweep)."""
+    batch_id: str
+    configs: list  # list of SimConfig dicts for JSON serialisation safety
+    labels: list[str]
+    sim_ids: list[str] = field(default_factory=list)
+    current_run: int = 0
+    total_runs: int = 0
+    status: str = "running"  # running | done | error
+    created_at: float = field(default_factory=time.time)
+
+
+BATCHES: dict[str, BatchState] = {}
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -356,6 +372,170 @@ async def download_csv(sim_id: str):
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=melts_{sim_id}.csv"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Batch simulation endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/api/batch")
+async def start_batch(batch: BatchConfig):
+    """Start a batch of simulations with parameter sweep."""
+    _cleanup_old_sims()
+
+    batch_id = uuid.uuid4().hex[:12]
+
+    # Generate individual configs by applying sweep values
+    configs = []
+    for val in batch.sweep.values:
+        cfg = batch.base_config.model_copy(deep=True)
+        if batch.sweep.param == "H2O":
+            cfg.composition["H2O"] = val
+        elif batch.sweep.param == "pressure":
+            cfg.P_start = val
+            cfg.P_end = val  # isobaric at swept pressure
+        elif batch.sweep.param == "fo2_offset":
+            cfg.fo2_offset = val
+        elif batch.sweep.param == "temperature":
+            cfg.T_start = val
+        configs.append(cfg)
+
+    # Auto-generate labels if not provided
+    LABEL_TEMPLATES = {
+        "H2O": "H\u2082O = {v:.1f} wt%",
+        "pressure": "P = {v:.0f} bar",
+        "fo2_offset": "fO\u2082 offset = {v:+.1f}",
+        "temperature": "T\u2080 = {v:.0f} \u00b0C",
+    }
+    if batch.sweep.labels and len(batch.sweep.labels) == len(batch.sweep.values):
+        labels = batch.sweep.labels
+    else:
+        tpl = LABEL_TEMPLATES.get(batch.sweep.param, "{v}")
+        labels = [tpl.format(v=v) for v in batch.sweep.values]
+
+    batch_state = BatchState(
+        batch_id=batch_id,
+        configs=configs,
+        labels=labels,
+        current_run=0,
+        total_runs=len(configs),
+        status="running",
+    )
+    BATCHES[batch_id] = batch_state
+
+    # Launch the sequential runner
+    asyncio.create_task(_run_batch_sequence(batch_id))
+
+    return {"batch_id": batch_id, "total_runs": len(configs)}
+
+
+async def _run_batch_sequence(batch_id: str):
+    """Run batch simulations sequentially (C library singleton constraint)."""
+    batch = BATCHES.get(batch_id)
+    if not batch:
+        return
+
+    for i, config in enumerate(batch.configs):
+        batch.current_run = i
+
+        # Start individual simulation
+        sim_id = uuid.uuid4().hex[:12]
+        state = SimState(sim_id=sim_id, config=config.model_dump())
+        SIMULATIONS[sim_id] = state
+        batch.sim_ids.append(sim_id)
+
+        config_json = config.model_dump_json()
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, str(WORKER_PATH),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        state.process = proc
+        proc.stdin.write(config_json.encode())
+        proc.stdin.close()
+
+        # Wait for this run to complete before starting the next
+        await _read_worker_output(sim_id)
+
+    batch.status = "done"
+
+
+@app.get("/api/batch/{batch_id}/status")
+async def get_batch_status(batch_id: str):
+    """Return progress and per-run status for a batch."""
+    if batch_id not in BATCHES:
+        raise HTTPException(404, detail="Batch not found")
+    batch = BATCHES[batch_id]
+
+    runs_info = []
+    for i, sid in enumerate(batch.sim_ids):
+        sim = SIMULATIONS.get(sid)
+        runs_info.append({
+            "sim_id": sid,
+            "label": batch.labels[i],
+            "status": sim.status if sim else "pending",
+            "n_results": len(sim.results) if sim else 0,
+        })
+
+    # Add entries for runs that haven't started yet
+    for i in range(len(batch.sim_ids), batch.total_runs):
+        runs_info.append({
+            "sim_id": None,
+            "label": batch.labels[i],
+            "status": "pending",
+            "n_results": 0,
+        })
+
+    return {
+        "batch_id": batch_id,
+        "status": batch.status,
+        "current_run": batch.current_run,
+        "total_runs": batch.total_runs,
+        "runs": runs_info,
+    }
+
+
+@app.get("/api/batch/{batch_id}/compare/{plot_type}")
+async def get_comparison_plot(batch_id: str, plot_type: str):
+    """Return a Plotly figure with multiple runs overlaid for comparison."""
+    if batch_id not in BATCHES:
+        raise HTTPException(404, detail="Batch not found")
+
+    batch = BATCHES[batch_id]
+
+    # Collect DataFrames from all completed runs
+    datasets = []
+    for i, sid in enumerate(batch.sim_ids):
+        sim = SIMULATIONS.get(sid)
+        if sim and sim.results:
+            df = _results_to_df(sim.results)
+            datasets.append({"label": batch.labels[i], "df": df})
+
+    if not datasets:
+        raise HTTPException(400, detail="No completed results yet")
+
+    # Map plot_type to comparison function
+    COMPARE_FUNCS = {
+        "tas": "fig_tas_compare",
+        "harker_mgo": "fig_harker_mgo_compare",
+        "evolution": "fig_evolution_compare",
+        "pt_path": "fig_pt_path_compare",
+    }
+
+    func_name = COMPARE_FUNCS.get(plot_type)
+    if not func_name:
+        raise HTTPException(400, detail=f"Comparison not available for {plot_type}")
+
+    try:
+        import meltsapp.plotting.bindplotly as bp
+        fig_func = getattr(bp, func_name)
+        fig = fig_func(datasets)
+        return JSONResponse(content=json.loads(fig.to_json()))
+    except AttributeError:
+        raise HTTPException(501, detail=f"Comparison function {func_name} not found")
+    except Exception as e:
+        raise HTTPException(500, detail=f"Comparison plot failed: {e}")
 
 
 # ---------------------------------------------------------------------------
