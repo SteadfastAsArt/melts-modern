@@ -55,22 +55,37 @@
           <button type="button" class="btn-link" id="toggle-minor">Show more oxides...</button>
         </fieldset>
 
-        <!-- T range -->
+        <!-- Path Mode -->
         <fieldset>
-          <legend>Temperature (&deg;C)</legend>
+          <legend>Simulation Path</legend>
+          <select id="path-mode" name="path_mode">
+            <option value="isobaric" selected>Isobaric Cooling</option>
+            <option value="isothermal">Isothermal Decompression</option>
+            <option value="polybaric">Polybaric (Linear P-T)</option>
+            <option value="isentropic">Isentropic (Adiabatic)</option>
+          </select>
+          <div class="mode-description" id="path-mode-desc">
+            Cool at constant pressure. Most common mode for magma chamber crystallization.
+          </div>
+        </fieldset>
+
+        <!-- T range -->
+        <fieldset id="fieldset-temperature">
+          <legend id="legend-temperature">Temperature (&deg;C)</legend>
           <div class="input-row">
-            <label>Start<input type="number" id="T-start" name="T_start" value="1400" step="1"></label>
-            <label>End<input type="number" id="T-end" name="T_end" value="900" step="1"></label>
-            <label>Step<input type="number" id="dT" name="dT" value="-2" step="0.5"></label>
+            <label id="label-T-start">Start<input type="number" id="T-start" name="T_start" value="1400" step="1"></label>
+            <label id="label-T-end">End<input type="number" id="T-end" name="T_end" value="900" step="1"></label>
+            <label id="label-dT">Step<input type="number" id="dT" name="dT" value="-2" step="0.5"></label>
           </div>
         </fieldset>
 
         <!-- P range -->
-        <fieldset>
-          <legend>Pressure (bar)</legend>
+        <fieldset id="fieldset-pressure">
+          <legend id="legend-pressure">Pressure (bar)</legend>
           <div class="input-row">
-            <label>Start<input type="number" id="P-start" name="P_start" value="5000" step="1"></label>
-            <label>End<input type="number" id="P-end" name="P_end" value="1000" step="1"></label>
+            <label id="label-P-start">Start<input type="number" id="P-start" name="P_start" value="5000" step="1"></label>
+            <label id="label-P-end">End<input type="number" id="P-end" name="P_end" value="1000" step="1"></label>
+            <label id="label-dP" class="hidden">Step<input type="number" id="dP" name="dP" value="-100" step="10"></label>
           </div>
           <div class="dp-dt-display" id="dp-dt-display">dP/dT = 8.0 bar/&deg;C</div>
         </fieldset>

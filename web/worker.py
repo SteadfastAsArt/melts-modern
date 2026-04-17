@@ -32,7 +32,10 @@ def main():
     config_json = sys.stdin.read()
     config = SimConfig.model_validate_json(config_json)
 
-    n_steps = int((config.T_start - config.T_end) / abs(config.dT))
+    if config.path_mode in ("isothermal", "isentropic"):
+        n_steps = int(abs(config.P_start - config.P_end) / abs(config.dP)) if config.dP != 0 else 1
+    else:
+        n_steps = int(abs(config.T_start - config.T_end) / abs(config.dT)) if config.dT != 0 else 1
     emit({"type": "init", "n_steps": n_steps, "message": "Initializing MELTS engine..."})
 
     for result in run_crystallization(config):

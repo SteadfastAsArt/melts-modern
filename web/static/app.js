@@ -32,6 +32,13 @@ const MODE_RANGES = {
   "4": "rhyolite-MELTS 1.2.0: 500\u20132000 \u00b0C, 0\u20133000 bar",
 };
 
+const PATH_MODE_DESC = {
+  isobaric: "Cool at constant pressure. Most common mode for magma chamber crystallization.",
+  isothermal: "Decompress at constant temperature. Models volatile exsolution and degassing during ascent.",
+  polybaric: "Follow a linear P-T path. Models simultaneous cooling and decompression.",
+  isentropic: "Adiabatic (constant entropy) decompression. Models mantle upwelling and decompression melting.",
+};
+
 // Which plots each tab needs: { tabName: [{divId, plotType, highlightMode}] }
 const TAB_PLOTS = {
   classification: [
@@ -101,6 +108,14 @@ const $tableWrapper = document.getElementById("table-wrapper");
 const $sidebarToggle = document.getElementById("sidebar-toggle");
 const $sidebar = document.getElementById("sidebar");
 const $dpDtDisplay = document.getElementById("dp-dt-display");
+const $pathMode = document.getElementById("path-mode");
+const $pathModeDesc = document.getElementById("path-mode-desc");
+const $labelTStart = document.getElementById("label-T-start");
+const $labelTEnd = document.getElementById("label-T-end");
+const $labelDT = document.getElementById("label-dT");
+const $labelPStart = document.getElementById("label-P-start");
+const $labelPEnd = document.getElementById("label-P-end");
+const $labelDP = document.getElementById("label-dP");
 const $scrubberSection = document.getElementById("scrubber-section");
 const $tempScrubber = document.getElementById("temp-scrubber");
 const $scrubberInfo = document.getElementById("scrubber-info");
@@ -116,7 +131,7 @@ document.addEventListener("DOMContentLoaded", () => {
   buildCompTable();
   loadPresets();
   bindEvents();
-  updateDpDt();
+  onPathModeChange();  // set initial field visibility for default mode
 });
 
 function buildCompTable() {
@@ -164,6 +179,7 @@ async function loadPresets() {
 function bindEvents() {
   $presetSelect.addEventListener("change", onPresetChange);
   $meltsMode.addEventListener("change", onModeChange);
+  $pathMode.addEventListener("change", onPathModeChange);
   $toggleMinor.addEventListener("click", onToggleMinor);
   $form.addEventListener("submit", onFormSubmit);
   $btnCsv.addEventListener("click", onCsvDownload);
@@ -185,7 +201,7 @@ function bindEvents() {
   $speedSelect.addEventListener("change", onSpeedChange);
 
   // Update dp/dt when T or P fields change
-  ["T-start", "T-end", "P-start", "P-end"].forEach((id) => {
+  ["T-start", "T-end", "P-start", "P-end", "dP"].forEach((id) => {
     document.getElementById(id).addEventListener("input", updateDpDt);
   });
 }
@@ -211,6 +227,18 @@ function onPresetChange() {
     if (d.T_end != null) document.getElementById("T-end").value = d.T_end;
     if (d.P_start != null) document.getElementById("P-start").value = d.P_start;
     if (d.P_end != null) document.getElementById("P-end").value = d.P_end;
+
+    // Auto-detect appropriate path mode from preset defaults
+    const pathMode = $pathMode.value;
+    if (pathMode === "isobaric" && d.P_start != null && d.P_end != null && d.P_start !== d.P_end) {
+      // Preset has a P range but we're in isobaric mode — switch to polybaric
+      $pathMode.value = "polybaric";
+      onPathModeChange();
+    } else if (pathMode === "polybaric" && d.P_start != null && d.P_end != null && d.P_start === d.P_end) {
+      // Preset has constant P but we're in polybaric mode — switch to isobaric
+      $pathMode.value = "isobaric";
+      onPathModeChange();
+    }
   }
   updateDpDt();
 }
@@ -219,6 +247,57 @@ function onModeChange() {
   const mode = $meltsMode.value;
   $modeBadge.textContent = MODE_NAMES[mode] || "";
   document.getElementById("mode-info").textContent = MODE_RANGES[mode] || "";
+}
+
+function onPathModeChange() {
+  const mode = $pathMode.value;
+
+  // Update description
+  $pathModeDesc.textContent = PATH_MODE_DESC[mode] || "";
+
+  // Field visibility configuration per mode
+  // Each mode shows/hides: T_end, dT, P_end, dP
+  // and adjusts labels accordingly
+
+  switch (mode) {
+    case "isobaric":
+      // T_start, T_end, dT visible; P_start visible, P_end hidden, dP hidden
+      $labelTEnd.classList.remove("hidden");
+      $labelDT.classList.remove("hidden");
+      $labelPEnd.classList.add("hidden");
+      $labelDP.classList.add("hidden");
+      $dpDtDisplay.textContent = "Constant pressure";
+      break;
+
+    case "isothermal":
+      // T_start visible (constant), T_end hidden, dT hidden
+      // P_start, P_end, dP visible
+      $labelTEnd.classList.add("hidden");
+      $labelDT.classList.add("hidden");
+      $labelPEnd.classList.remove("hidden");
+      $labelDP.classList.remove("hidden");
+      $dpDtDisplay.textContent = "Constant temperature";
+      break;
+
+    case "polybaric":
+      // All T and P fields visible, dP hidden (interpolated from T range)
+      $labelTEnd.classList.remove("hidden");
+      $labelDT.classList.remove("hidden");
+      $labelPEnd.classList.remove("hidden");
+      $labelDP.classList.add("hidden");
+      updateDpDt();
+      break;
+
+    case "isentropic":
+      // T_start visible (initial guess), T_end hidden, dT hidden
+      // P_start, P_end, dP visible
+      $labelTEnd.classList.add("hidden");
+      $labelDT.classList.add("hidden");
+      $labelPEnd.classList.remove("hidden");
+      $labelDP.classList.remove("hidden");
+      $dpDtDisplay.textContent = "Engine solves for temperature";
+      break;
+  }
 }
 
 function onToggleMinor() {
@@ -233,13 +312,29 @@ function updateMinorVisibility() {
 }
 
 function updateDpDt() {
+  const mode = $pathMode.value;
+
+  if (mode === "isobaric") {
+    $dpDtDisplay.textContent = "Constant pressure";
+    return;
+  }
+  if (mode === "isothermal") {
+    $dpDtDisplay.textContent = "Constant temperature";
+    return;
+  }
+  if (mode === "isentropic") {
+    $dpDtDisplay.textContent = "Engine solves for temperature";
+    return;
+  }
+
+  // polybaric: show dP/dT ratio
   const tStart = parseFloat(document.getElementById("T-start").value) || 0;
   const tEnd = parseFloat(document.getElementById("T-end").value) || 0;
   const pStart = parseFloat(document.getElementById("P-start").value) || 0;
   const pEnd = parseFloat(document.getElementById("P-end").value) || 0;
   const dT = tEnd - tStart;
   if (Math.abs(dT) < 0.01) {
-    $dpDtDisplay.textContent = "dP/dT = -- (isobaric if P constant)";
+    $dpDtDisplay.textContent = "dP/dT = -- (no temperature range)";
     return;
   }
   const dpdt = (pEnd - pStart) / dT;
@@ -266,14 +361,18 @@ function onFormSubmit(e) {
     return;
   }
 
+  const pathMode = $pathMode.value;
+
   const config = {
     melts_mode: parseInt($meltsMode.value),
     composition,
+    path_mode: pathMode,
     T_start: parseFloat(document.getElementById("T-start").value),
     T_end: parseFloat(document.getElementById("T-end").value),
     dT: parseFloat(document.getElementById("dT").value),
     P_start: parseFloat(document.getElementById("P-start").value),
     P_end: parseFloat(document.getElementById("P-end").value),
+    dP: parseFloat(document.getElementById("dP").value),
     crystallization_mode: document.getElementById("cryst-mode").value,
   };
 
@@ -283,10 +382,49 @@ function onFormSubmit(e) {
     config.fo2_offset = parseFloat(document.getElementById("fo2-offset").value) || 0;
   }
 
-  // Validate T range
-  if (config.dT >= 0 && config.T_start > config.T_end) {
-    showError("dT must be negative when T_start > T_end (cooling).");
-    return;
+  // Mode-specific adjustments and validation
+  if (pathMode === "isobaric") {
+    // Constant P: force P_end = P_start
+    config.P_end = config.P_start;
+    if (config.dT >= 0 && config.T_start > config.T_end) {
+      showError("dT must be negative when T_start > T_end (cooling).");
+      return;
+    }
+  } else if (pathMode === "isothermal") {
+    // Constant T: force T_end = T_start
+    config.T_end = config.T_start;
+    if (config.dP === 0) {
+      showError("dP must be non-zero for isothermal mode.");
+      return;
+    }
+    if (config.dP > 0 && config.P_start > config.P_end) {
+      showError("dP must be negative when P_start > P_end (decompression).");
+      return;
+    }
+    if (config.dP < 0 && config.P_start < config.P_end) {
+      showError("dP must be positive when P_start < P_end (compression).");
+      return;
+    }
+  } else if (pathMode === "polybaric") {
+    if (config.dT >= 0 && config.T_start > config.T_end) {
+      showError("dT must be negative when T_start > T_end (cooling).");
+      return;
+    }
+  } else if (pathMode === "isentropic") {
+    // T_end is not used; set to a safe low value so the backend doesn't choke
+    config.T_end = 600;
+    if (config.dP === 0) {
+      showError("dP must be non-zero for isentropic mode.");
+      return;
+    }
+    if (config.dP > 0 && config.P_start > config.P_end) {
+      showError("dP must be negative when P_start > P_end (decompression).");
+      return;
+    }
+    if (config.dP < 0 && config.P_start < config.P_end) {
+      showError("dP must be positive when P_start < P_end (compression).");
+      return;
+    }
   }
 
   startSimulation(config);
@@ -337,7 +475,12 @@ async function startSimulation(config) {
 }
 
 function pollSimulation(simId, config) {
-  const nSteps = Math.abs((config.T_start - config.T_end) / Math.abs(config.dT));
+  let nSteps;
+  if (config.path_mode === "isothermal" || config.path_mode === "isentropic") {
+    nSteps = Math.abs((config.P_start - config.P_end) / Math.abs(config.dP));
+  } else {
+    nSteps = Math.abs((config.T_start - config.T_end) / Math.abs(config.dT));
+  }
   $progressInfo.textContent = "Initializing MELTS engine...";
   $progressBar.style.width = "2%";
 

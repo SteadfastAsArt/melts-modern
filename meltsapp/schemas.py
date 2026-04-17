@@ -36,6 +36,18 @@ class SimConfig(BaseModel):
     P_end: float = 1000.0
     """Final pressure (bar)."""
 
+    path_mode: Literal["isobaric", "isothermal", "polybaric", "isentropic"] = "isobaric"
+    """Path mode: how to step through T-P space.
+
+    - isobaric: constant P, step T from T_start to T_end by dT
+    - isothermal: constant T, step P from P_start to P_end by dP
+    - polybaric: linear P-T path, step T by dT with P interpolated
+    - isentropic: adiabatic (constant entropy) decompression, step P by dP
+    """
+
+    dP: float = -100.0
+    """Pressure step (bar, negative for decompression). Used in isothermal/isentropic modes."""
+
     fo2_buffer: str | None = None
     """Oxygen fugacity buffer name: 'FMQ', 'NNO', 'IW', 'HM', etc."""
 

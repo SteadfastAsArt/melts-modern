@@ -265,6 +265,27 @@ body {
   font-style: italic;
 }
 
+.mode-description {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin-top: 6px;
+  text-align: center;
+  font-style: italic;
+  line-height: 1.4;
+  transition: opacity 0.2s ease;
+}
+
+/* Smooth field show/hide transitions */
+.field-fade {
+  transition: opacity 0.2s ease, max-height 0.25s ease;
+  overflow: hidden;
+}
+
+.field-disabled input {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 /* Run button */
 .btn-run {
   width: 100%;
