@@ -91,13 +91,33 @@ class MeltsSession:
     # Single equilibration step
     # ------------------------------------------------------------------
 
-    def equilibrate(self, T: float, P: float, step: int = 0) -> StepResult:
-        """Run one equilibration step and return a fully-populated StepResult."""
+    def equilibrate(self, T: float, P: float, step: int = 0,
+                    run_mode: int = 1, output_flag: int = 1) -> StepResult:
+        """Run one equilibration step and return a fully-populated StepResult.
+
+        Parameters
+        ----------
+        T : float
+            Temperature (deg C).
+        P : float
+            Pressure (bar).
+        step : int
+            Step counter for the returned StepResult.
+        run_mode : int
+            MELTS run mode: 1=standard, 2=isenthalpic, 3=isentropic, 4=isochoric.
+        output_flag : int
+            0=equilibrium crystallization, 1=fractionate solids.
+        """
         self._eng.temperature = T
         self._eng.pressure = P
-        self._eng.calcEquilibriumState(1, 1)
+        self._eng.calcEquilibriumState(run_mode, output_flag)
 
         eng = self._eng
+
+        # For isentropic (run_mode=3), the engine solves for T internally.
+        # Read the actual T back from the engine so StepResult reflects reality.
+        actual_T = float(eng.temperature)
+        actual_P = float(eng.pressure)
 
         # Gather all phase names
         all_phases: list[str] = []
@@ -198,8 +218,8 @@ class MeltsSession:
 
         return StepResult(
             step=step,
-            T=T,
-            P=P,
+            T=actual_T,
+            P=actual_P,
             liquid_mass=liq_mass,
             solid_mass=sol_mass,
             liquid_comp=lc,
