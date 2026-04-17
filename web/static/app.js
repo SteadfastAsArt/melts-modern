@@ -32,6 +32,96 @@ const MODE_RANGES = {
   "4": "rhyolite-MELTS 1.2.0: 500\u20132000 \u00b0C, 0\u20133000 bar",
 };
 
+// Phase groups for the phase selection UI
+const PHASE_GROUPS = [
+  {
+    label: "Mafic Minerals",
+    phases: [
+      { id: "olivine", name: "Olivine", tip: "(Mg,Fe)\u2082SiO\u2084 \u2014 common in basalts" },
+      { id: "clinopyroxene", name: "Clinopyroxene", tip: "Ca(Mg,Fe)Si\u2082O\u2086 \u2014 augite, diopside" },
+      { id: "orthopyroxene", name: "Orthopyroxene", tip: "(Mg,Fe)SiO\u2083 \u2014 enstatite, hypersthene" },
+      { id: "spinel", name: "Spinel", tip: "Mg-Fe-Cr-Al oxide \u2014 chromite, magnetite" },
+      { id: "garnet", name: "Garnet", tip: "High-P phase \u2014 pyrope, almandine" },
+    ],
+  },
+  {
+    label: "Felsic Minerals",
+    phases: [
+      { id: "plagioclase", name: "Plagioclase", tip: "Ca-Na feldspar \u2014 anorthite to albite" },
+      { id: "alkali-feldspar", name: "Alkali Feldspar", tip: "K-Na feldspar \u2014 sanidine, orthoclase" },
+      { id: "quartz", name: "Quartz", tip: "SiO\u2082 \u2014 appears in silicic melts" },
+      { id: "nepheline", name: "Nepheline", tip: "NaAlSiO\u2084 \u2014 feldspathoid, silica-undersaturated" },
+      { id: "leucite", name: "Leucite", tip: "KAlSi\u2082O\u2086 \u2014 K-rich feldspathoid" },
+    ],
+  },
+  {
+    label: "Hydrous Phases",
+    phases: [
+      { id: "hornblende", name: "Hornblende", tip: "Ca-amphibole \u2014 common in intermediate magmas" },
+      { id: "biotite", name: "Biotite", tip: "K(Mg,Fe)\u2083AlSi\u2083O\u2081\u2080(OH)\u2082 \u2014 mica" },
+      { id: "muscovite", name: "Muscovite", tip: "KAl\u2082AlSi\u2083O\u2081\u2080(OH)\u2082 \u2014 rare in igneous" },
+      { id: "cummingtonite", name: "Cummingtonite", tip: "(Mg,Fe)\u2087Si\u2088O\u2082\u2082(OH)\u2082" },
+      { id: "clinoamphibole", name: "Clinoamphibole", tip: "Monoclinic amphibole group" },
+      { id: "orthoamphibole", name: "Orthoamphibole", tip: "Orthorhombic amphibole group" },
+      { id: "fluid", name: "Fluid", tip: "H\u2082O-CO\u2082 fluid phase" },
+    ],
+  },
+  {
+    label: "Accessory Phases",
+    phases: [
+      { id: "apatite", name: "Apatite", tip: "Ca\u2085(PO\u2084)\u2083(OH,F,Cl) \u2014 P host" },
+      { id: "sphene", name: "Sphene", tip: "CaTiSiO\u2085 \u2014 titanite" },
+      { id: "rutile", name: "Rutile", tip: "TiO\u2082 \u2014 often suppressed" },
+      { id: "perovskite", name: "Perovskite", tip: "CaTiO\u2083" },
+      { id: "whitlockite", name: "Whitlockite", tip: "Ca\u2083(PO\u2084)\u2082 \u2014 phosphate" },
+      { id: "corundum", name: "Corundum", tip: "Al\u2082O\u2083 \u2014 very rare in natural magmas" },
+      { id: "sillimanite", name: "Sillimanite", tip: "Al\u2082SiO\u2085 \u2014 metamorphic phase" },
+    ],
+  },
+  {
+    label: "SiO\u2082 Polymorphs",
+    phases: [
+      { id: "tridymite", name: "Tridymite", tip: "High-T SiO\u2082 \u2014 typically suppressed" },
+      { id: "cristobalite", name: "Cristobalite", tip: "SiO\u2082 polymorph \u2014 typically suppressed" },
+    ],
+  },
+  {
+    label: "Other",
+    phases: [
+      { id: "melilite", name: "Melilite", tip: "Ca\u2082(Mg,Fe,Al)(Si,Al)\u2082O\u2087" },
+      { id: "aenigmatite", name: "Aenigmatite", tip: "Na\u2082Fe\u2085TiSi\u2086O\u2082\u2080 \u2014 peralkaline" },
+      { id: "rhm-oxide", name: "Rhm Oxide", tip: "Rhombohedral oxide \u2014 ilmenite, hematite" },
+      { id: "ortho-oxide", name: "Ortho Oxide", tip: "Orthorhombic oxide \u2014 pseudobrookite" },
+      { id: "alloy-solid", name: "Alloy (solid)", tip: "Metallic alloy, solid" },
+      { id: "alloy-liquid", name: "Alloy (liquid)", tip: "Metallic alloy, liquid" },
+    ],
+  },
+];
+
+// Phase preset templates
+const PHASE_PRESETS = {
+  default: {
+    label: "Standard",
+    description: "Suppress tridymite and cristobalite (kinetically unlikely SiO\u2082 polymorphs)",
+    suppress: ["tridymite", "cristobalite"],
+  },
+  shallow: {
+    label: "Shallow Crustal",
+    description: "Standard + suppress garnet (unstable at < 30 km depth)",
+    suppress: ["tridymite", "cristobalite", "garnet"],
+  },
+  deep: {
+    label: "Deep/Mantle",
+    description: "All phases enabled for high-pressure modeling",
+    suppress: [],
+  },
+  all: {
+    label: "All Phases",
+    description: "No phases suppressed \u2014 all are considered by the solver",
+    suppress: [],
+  },
+};
+
 // Which plots each tab needs: { tabName: [{divId, plotType, highlightMode}] }
 const TAB_PLOTS = {
   classification: [
@@ -76,6 +166,8 @@ let currentScrubberIndex = -1;
 let animationInterval = null;
 let highlightTraces = new Map(); // divId -> trace index
 let currentSpeed = 100;
+let phasePanelVisible = false;
+let activePhasePreset = "default";
 
 // ---------------------------------------------------------------------------
 // DOM references
@@ -108,12 +200,17 @@ const $btnPlay = document.getElementById("btn-play");
 const $btnPause = document.getElementById("btn-pause");
 const $speedSelect = document.getElementById("speed-select");
 const $toastContainer = document.getElementById("toast-container");
+const $phaseGroups = document.getElementById("phase-groups");
+const $phaseInfo = document.getElementById("phase-info");
+const $togglePhases = document.getElementById("toggle-phases");
+const $phasePresets = document.getElementById("phase-presets");
 
 // ---------------------------------------------------------------------------
 // Initialization
 // ---------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
   buildCompTable();
+  buildPhaseSelection();
   loadPresets();
   bindEvents();
   updateDpDt();
@@ -169,6 +266,14 @@ function bindEvents() {
   $btnCsv.addEventListener("click", onCsvDownload);
   $sidebarToggle.addEventListener("click", () => {
     $sidebar.classList.toggle("open");
+  });
+
+  // Phase selection
+  $togglePhases.addEventListener("click", onTogglePhases);
+  $phasePresets.addEventListener("click", (e) => {
+    const btn = e.target.closest(".phase-preset-btn");
+    if (!btn) return;
+    onPhasePresetClick(btn.dataset.preset);
   });
 
   // Tab switching
@@ -275,6 +380,7 @@ function onFormSubmit(e) {
     P_start: parseFloat(document.getElementById("P-start").value),
     P_end: parseFloat(document.getElementById("P-end").value),
     crystallization_mode: document.getElementById("cryst-mode").value,
+    suppress_phases: getSuppressedPhases(),
   };
 
   const fo2 = document.getElementById("fo2-buffer").value;
@@ -805,4 +911,131 @@ function showToast(message) {
     toast.classList.add("fade-out");
     setTimeout(() => toast.remove(), 300);
   }, 3000);
+}
+
+// ---------------------------------------------------------------------------
+// Phase selection
+// ---------------------------------------------------------------------------
+function buildPhaseSelection() {
+  $phaseGroups.innerHTML = "";
+  for (const group of PHASE_GROUPS) {
+    const groupDiv = document.createElement("div");
+    groupDiv.className = "phase-group";
+
+    const groupLabel = document.createElement("div");
+    groupLabel.className = "phase-group-label";
+    groupLabel.textContent = group.label;
+    groupDiv.appendChild(groupLabel);
+
+    const grid = document.createElement("div");
+    grid.className = "phase-checkbox-grid";
+
+    for (const phase of group.phases) {
+      const label = document.createElement("label");
+      label.className = "phase-checkbox-label";
+      label.title = phase.tip;
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "phase-checkbox";
+      checkbox.id = `phase-${phase.id}`;
+      checkbox.dataset.phaseId = phase.id;
+      checkbox.checked = true; // default: all included
+      checkbox.addEventListener("change", onPhaseCheckboxChange);
+
+      const span = document.createElement("span");
+      span.className = "phase-checkbox-name";
+      span.textContent = phase.name;
+
+      const tipSpan = document.createElement("span");
+      tipSpan.className = "phase-checkbox-tip";
+      tipSpan.textContent = phase.tip;
+
+      label.appendChild(checkbox);
+      label.appendChild(span);
+      label.appendChild(tipSpan);
+      grid.appendChild(label);
+    }
+
+    groupDiv.appendChild(grid);
+    $phaseGroups.appendChild(groupDiv);
+  }
+
+  // Apply default preset (suppress tridymite + cristobalite)
+  applyPhasePreset("default");
+}
+
+function applyPhasePreset(presetKey) {
+  const preset = PHASE_PRESETS[presetKey];
+  if (!preset) return;
+
+  activePhasePreset = presetKey;
+  const suppressSet = new Set(preset.suppress);
+
+  // Update all checkboxes
+  const checkboxes = $phaseGroups.querySelectorAll(".phase-checkbox");
+  for (const cb of checkboxes) {
+    cb.checked = !suppressSet.has(cb.dataset.phaseId);
+  }
+
+  // Update preset button highlights
+  const buttons = $phasePresets.querySelectorAll(".phase-preset-btn");
+  for (const btn of buttons) {
+    btn.classList.toggle("active", btn.dataset.preset === presetKey);
+  }
+
+  // Update info text
+  updatePhaseInfo();
+}
+
+function onPhasePresetClick(presetKey) {
+  applyPhasePreset(presetKey);
+}
+
+function onPhaseCheckboxChange() {
+  // User manually changed a checkbox: clear preset highlight
+  activePhasePreset = null;
+  const buttons = $phasePresets.querySelectorAll(".phase-preset-btn");
+  for (const btn of buttons) {
+    btn.classList.remove("active");
+  }
+  updatePhaseInfo();
+}
+
+function updatePhaseInfo() {
+  const suppressed = getSuppressedPhases();
+  if (suppressed.length === 0) {
+    $phaseInfo.textContent = "All phases enabled";
+  } else {
+    // Capitalize first letter for display
+    const names = suppressed.map((id) => {
+      // Find the display name from PHASE_GROUPS
+      for (const group of PHASE_GROUPS) {
+        for (const phase of group.phases) {
+          if (phase.id === id) return phase.name.toLowerCase();
+        }
+      }
+      return id;
+    });
+    $phaseInfo.textContent = `Suppressing: ${names.join(", ")}`;
+  }
+}
+
+function getSuppressedPhases() {
+  const suppressed = [];
+  const checkboxes = $phaseGroups.querySelectorAll(".phase-checkbox");
+  for (const cb of checkboxes) {
+    if (!cb.checked) {
+      suppressed.push(cb.dataset.phaseId);
+    }
+  }
+  return suppressed;
+}
+
+function onTogglePhases() {
+  phasePanelVisible = !phasePanelVisible;
+  $phaseGroups.classList.toggle("hidden", !phasePanelVisible);
+  $togglePhases.textContent = phasePanelVisible
+    ? "Hide phase details"
+    : "Customize phases...";
 }

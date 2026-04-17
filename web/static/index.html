@@ -102,6 +102,22 @@
           </select>
         </fieldset>
 
+        <!-- Phase selection -->
+        <fieldset>
+          <legend>Phase Selection <span class="phase-legend-help" title="Suppress phases you know cannot form at your conditions. Suppressed phases are excluded from the equilibrium calculation.">?</span></legend>
+          <div class="phase-presets" id="phase-presets">
+            <button type="button" class="phase-preset-btn active" data-preset="default">Standard</button>
+            <button type="button" class="phase-preset-btn" data-preset="shallow">Shallow</button>
+            <button type="button" class="phase-preset-btn" data-preset="deep">Deep</button>
+            <button type="button" class="phase-preset-btn" data-preset="all">All</button>
+          </div>
+          <div class="phase-info" id="phase-info">Suppressing: tridymite, cristobalite</div>
+          <div class="phase-groups hidden" id="phase-groups">
+            <!-- Groups inserted by JS -->
+          </div>
+          <button type="button" class="btn-link" id="toggle-phases">Customize phases...</button>
+        </fieldset>
+
         <button type="submit" class="btn-run" id="btn-run">
           <span class="btn-run-label">Run Simulation</span>
           <span class="btn-run-spinner hidden"></span>
