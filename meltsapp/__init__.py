@@ -21,6 +21,6 @@ OX: list[str] = [
     "CO2", "SO3", "Cl2O-1", "F2O-1",
 ]
 
-from meltsapp.schemas import SimConfig, StepResult  # noqa: E402
+from meltsapp.schemas import MageminConfig, SimConfig, StepResult  # noqa: E402
 
-__all__ = ["OX", "SimConfig", "StepResult", "PROJECT_ROOT"]
+__all__ = ["OX", "MageminConfig", "SimConfig", "StepResult", "PROJECT_ROOT"]

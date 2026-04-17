@@ -34,7 +34,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from meltsapp import OX
 from meltsapp.presets import PRESETS
-from meltsapp.schemas import BatchConfig, SimConfig
+from meltsapp.schemas import BatchConfig, MageminConfig, SimConfig
 
 # ---------------------------------------------------------------------------
 # Simulation state
@@ -87,6 +87,7 @@ app.add_middleware(
 )
 
 WORKER_PATH = Path(__file__).resolve().parent / "worker.py"
+MAGEMIN_WORKER_PATH = Path(__file__).resolve().parent / "magemin_worker.py"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
@@ -179,6 +180,87 @@ async def start_simulation(config: SimConfig):
     asyncio.create_task(_read_worker_output(sim_id))
 
     return {"sim_id": sim_id}
+
+
+@app.post("/api/simulate/magemin")
+async def start_magemin_simulation(config: MageminConfig):
+    """Spawn a MAGEMin worker subprocess for a new simulation. Returns sim_id."""
+    _cleanup_old_sims()
+
+    sim_id = uuid.uuid4().hex[:12]
+    state = SimState(sim_id=sim_id, config=config.model_dump())
+    SIMULATIONS[sim_id] = state
+
+    config_json = config.model_dump_json()
+
+    # Set Julia environment variables for the subprocess
+    env = os.environ.copy()
+    env["JULIA_DEPOT_PATH"] = os.path.expanduser("~/.julia")
+    env["PATH"] = os.path.expanduser("~/julia/bin") + ":" + env.get("PATH", "")
+
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, str(MAGEMIN_WORKER_PATH),
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+        env=env,
+    )
+    state.process = proc
+
+    # Send config and close stdin
+    proc.stdin.write(config_json.encode())
+    proc.stdin.close()
+
+    # Launch background task to read stdout
+    asyncio.create_task(_read_worker_output(sim_id))
+
+    return {"sim_id": sim_id}
+
+
+@app.get("/api/magemin/info")
+async def magemin_info():
+    """Return MAGEMin engine information and available models."""
+    return JSONResponse(content={
+        "available": True,
+        "models": {
+            "Green2025": {
+                "name": "Green et al. 2025",
+                "description": "Holland-Powell igneous database: mantle to granite, broad P-T coverage",
+                "database": "Holland-Powell",
+                "reference": "Green et al. (2025)",
+            },
+            "Weller2024": {
+                "name": "Weller et al. 2024",
+                "description": "Anhydrous alkaline-silicate magmatic systems",
+                "database": "Holland-Powell",
+                "reference": "Weller et al. (2024)",
+            },
+        },
+        "features": [
+            "Gibbs free energy minimization (not Gibbs-Duhem)",
+            "Holland-Powell thermodynamic database",
+            "Seismic velocities (Vp, Vs)",
+            "Melt viscosity (Giordano 2008)",
+            "Phase diagram / pseudosection calculation",
+            "Native parallelism for batch calculations",
+            "No global singleton: concurrent sessions possible",
+        ],
+        "composition_note": (
+            "MAGEMin uses FeOt (total iron as FeO) + Fe3+/FeT ratio, "
+            "not separate FeO and Fe2O3. The conversion is handled automatically."
+        ),
+        "phase_names": {
+            "liquid1": "Melt",
+            "olivine1": "Olivine",
+            "orthopyroxene1": "Orthopyroxene",
+            "clinopyroxene1": "Clinopyroxene",
+            "garnet1": "Garnet",
+            "feldspar1": "Feldspar",
+            "spinel1": "Spinel",
+            "fluid1": "Fluid",
+            "rhm-oxide1": "Oxide (ilmenite/hematite)",
+        },
+    })
 
 
 async def _read_worker_output(sim_id: str) -> None:

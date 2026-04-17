@@ -1,7 +1,8 @@
 """
-Data models for MELTS simulation configuration and results.
+Data models for MELTS and MAGEMin simulation configuration and results.
 
-SimConfig — Pydantic model for validated input configuration.
+SimConfig — Pydantic model for validated MELTS input configuration.
+MageminConfig — Pydantic model for validated MAGEMin input configuration.
 PhaseDetail / StepResult — Dataclasses for output-only result data.
 """
 from __future__ import annotations
@@ -59,6 +60,48 @@ class SimConfig(BaseModel):
 
     suppress_phases: list[str] = []
     """List of phase names to suppress during the calculation."""
+
+
+class MageminConfig(BaseModel):
+    """Validated simulation configuration for a MAGEMin crystallization run."""
+
+    model: Literal["Green2025", "Weller2024"] = "Green2025"
+    """Thermodynamic database: Green et al. 2025 or Weller et al. 2024."""
+
+    path_mode: Literal["isobaric", "isothermal", "polybaric"] = "isobaric"
+    """Simulation path mode."""
+
+    composition: dict[str, float]
+    """Oxide name -> wt% (e.g. {'SiO2': 48.68, 'Al2O3': 17.64, ...})."""
+
+    fe3fet: float = 0.1
+    """Fe3+/FeT ratio (0-1). MAGEMin uses FeOt + Fe3Fet instead of separate FeO/Fe2O3."""
+
+    T_start: float = 1300.0
+    T_end: float = 900.0
+    dT: float = 2.0
+    """Temperature range and step (deg C). dT is positive (step size)."""
+
+    P_start: float = 5000.0
+    P_end: float = 5000.0
+    dP: float = 100.0
+    """Pressure range and step (bar)."""
+
+    crystallization_mode: Literal["fractionate", "equilibrium"] = "fractionate"
+
+    fO2_buffer: str | None = None
+    fO2_offset: float = 0.0
+
+    suppress_phases: list[str] = []
+
+    find_liquidus: bool = True
+    """Whether to find the liquidus before starting the path."""
+
+    h2o_init: float | None = None
+    """Initial H2O content (wt%). If None, uses H2O from composition."""
+
+    co2_init: float | None = None
+    """Initial CO2 content (wt%). If None, no CO2."""
 
 
 class SweepParam(BaseModel):

@@ -241,6 +241,68 @@ body {
   text-decoration: underline;
 }
 
+/* Engine selector */
+.engine-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.engine-btn {
+  flex: 1;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: inherit;
+}
+
+.engine-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.engine-btn.active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.1);
+}
+
+.engine-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.engine-btn.active .engine-name {
+  color: #93c5fd;
+}
+
+.engine-desc {
+  font-size: 0.65rem;
+  color: #64748b;
+  font-weight: 400;
+}
+
+.engine-btn.active .engine-desc {
+  color: #60a5fa;
+}
+
+.engine-info {
+  font-size: 0.72rem;
+  color: #64748b;
+  font-style: italic;
+  text-align: center;
+  line-height: 1.4;
+}
+
 /* Warning box */
 .warning {
   background: rgba(251, 191, 36, 0.1);

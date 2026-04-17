@@ -15,6 +15,12 @@ const OX = [
   "CO2", "SO3", "Cl2O-1", "F2O-1",
 ];
 
+// MAGEMin uses a reduced oxide set (FeOt instead of FeO + Fe2O3, no MnO/NiO/CoO etc.)
+const OX_MAGEMIN = [
+  "SiO2", "TiO2", "Al2O3", "FeOt", "Cr2O3",
+  "MgO", "CaO", "Na2O", "K2O", "H2O",
+];
+
 // First 14 are "main", last 5 are "minor"
 const MAIN_OX_COUNT = 14;
 
@@ -30,6 +36,36 @@ const MODE_RANGES = {
   "2": "pMELTS 5.6.1: 1000\u20132500 \u00b0C, 10000\u201330000 bar",
   "3": "rhyolite-MELTS 1.1.0: 500\u20132000 \u00b0C, 0\u20134000 bar",
   "4": "rhyolite-MELTS 1.2.0: 500\u20132000 \u00b0C, 0\u20133000 bar",
+};
+
+const ENGINE_INFO = {
+  melts: "rhyolite-MELTS: Established model for crustal magmatic systems (Ghiorso & Sack database)",
+  magemin: "MAGEMin: Gibbs energy minimizer using Holland-Powell database \u2014 broader P-T range, seismic velocities",
+};
+
+const MAGEMIN_MODELS = {
+  Green2025: {
+    name: "Green et al. 2025",
+    desc: "Igneous database: mantle to granite, H\u2082O + CO\u2082 volatiles",
+  },
+  Weller2024: {
+    name: "Weller et al. 2024",
+    desc: "Anhydrous alkaline-silicate magmatic systems",
+  },
+};
+
+// MAGEMin phase display names (short -> readable)
+const MAGEMIN_PHASE_NAMES = {
+  liquid1: "Melt",
+  olivine1: "Olivine",
+  orthopyroxene1: "Orthopyroxene",
+  clinopyroxene1: "Clinopyroxene",
+  garnet1: "Garnet",
+  feldspar1: "Feldspar",
+  spinel1: "Spinel",
+  fluid1: "Fluid",
+  "rhm-oxide1": "Oxide",
+  plagioclase1: "Plagioclase",
 };
 
 // Phase groups for the phase selection UI
@@ -120,6 +156,8 @@ const PHASE_PRESETS = {
     description: "No phases suppressed \u2014 all are considered by the solver",
     suppress: [],
   },
+};
+
 // Path mode descriptions
 const PATH_MODE_DESC = {
   isobaric: "Cool at constant pressure. Most common mode for magma chamber crystallization.",
@@ -164,6 +202,7 @@ const TAB_PLOTS = {
 // ---------------------------------------------------------------------------
 let currentSimId = null;
 let currentBatchId = null;
+let currentEngine = "melts"; // "melts" or "magemin"
 let batchMode = false;
 let presets = {};
 let plotCache = {};       // { "simId:plotType": true } — tracks fetched plots
@@ -216,6 +255,15 @@ const $btnPlay = document.getElementById("btn-play");
 const $btnPause = document.getElementById("btn-pause");
 const $speedSelect = document.getElementById("speed-select");
 const $toastContainer = document.getElementById("toast-container");
+const $engineSelector = document.getElementById("engine-selector");
+const $engineInfo = document.getElementById("engine-info");
+const $meltsModeFieldset = document.getElementById("melts-mode-fieldset");
+const $mageminModelFieldset = document.getElementById("magemin-model-fieldset");
+const $mageminPathFieldset = document.getElementById("magemin-path-fieldset");
+const $mageminFe3fetFieldset = document.getElementById("magemin-fe3fet-fieldset");
+const $mageminModel = document.getElementById("magemin-model");
+const $mageminModelInfo = document.getElementById("magemin-model-info");
+const $mageminPathMode = document.getElementById("magemin-path-mode");
 const $phaseGroups = document.getElementById("phase-groups");
 const $phaseInfo = document.getElementById("phase-info");
 const $togglePhases = document.getElementById("toggle-phases");
@@ -240,19 +288,47 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function buildCompTable() {
+  // Save current values before rebuilding
+  const savedValues = {};
+  document.querySelectorAll(".ox-input").forEach((input) => {
+    const ox = input.dataset.oxide;
+    const val = parseFloat(input.value);
+    if (val > 0) savedValues[ox] = val;
+  });
+
   $compBody.innerHTML = "";
-  OX.forEach((ox, i) => {
+  const oxList = currentEngine === "magemin" ? OX_MAGEMIN : OX;
+
+  oxList.forEach((ox, i) => {
     const tr = document.createElement("tr");
-    const isMinor = i >= MAIN_OX_COUNT;
+    const isMinor = currentEngine === "melts" && i >= MAIN_OX_COUNT;
     if (isMinor) tr.classList.add("minor-ox");
+
+    // Restore value: for MAGEMin FeOt, compute from saved FeO + Fe2O3
+    let defaultVal = 0;
+    if (ox === "FeOt" && currentEngine === "magemin") {
+      const feo = savedValues["FeO"] || 0;
+      const fe2o3 = savedValues["Fe2O3"] || 0;
+      defaultVal = feo + fe2o3 * 0.8998;
+      if (defaultVal > 0) defaultVal = parseFloat(defaultVal.toFixed(3));
+    } else if ((ox === "FeO" || ox === "Fe2O3") && currentEngine === "melts" && savedValues["FeOt"]) {
+      // Switching back to MELTS from MAGEMin: put all FeOt into FeO
+      if (ox === "FeO") defaultVal = savedValues["FeOt"] || 0;
+    } else {
+      defaultVal = savedValues[ox] || 0;
+    }
+
     tr.innerHTML = `
       <td class="ox-label">${formatOxide(ox)}</td>
       <td><input type="number" step="0.001" min="0" max="100"
-                 id="ox-${ox}" data-oxide="${ox}" value="0" class="ox-input"></td>
+                 id="ox-${ox}" data-oxide="${ox}" value="${defaultVal}" class="ox-input"></td>
     `;
     $compBody.appendChild(tr);
   });
-  updateMinorVisibility();
+
+  // Show/hide minor oxide toggle based on engine
+  $toggleMinor.style.display = currentEngine === "melts" ? "" : "none";
+  if (currentEngine === "melts") updateMinorVisibility();
 }
 
 function formatOxide(ox) {
@@ -291,6 +367,16 @@ function bindEvents() {
   $sidebarToggle.addEventListener("click", () => {
     $sidebar.classList.toggle("open");
   });
+
+  // Engine selector
+  $engineSelector.addEventListener("click", (e) => {
+    const btn = e.target.closest(".engine-btn");
+    if (!btn) return;
+    switchEngine(btn.dataset.engine);
+  });
+
+  // MAGEMin model selector
+  $mageminModel.addEventListener("change", onMageminModelChange);
 
   // Phase selection
   $togglePhases.addEventListener("click", onTogglePhases);
@@ -341,10 +427,19 @@ function onPresetChange() {
   if (!key || !presets[key]) return;
   const preset = presets[key];
 
-  // Fill composition
-  OX.forEach((ox) => {
+  // Fill composition (using correct oxide set for current engine)
+  const oxList = currentEngine === "magemin" ? OX_MAGEMIN : OX;
+  oxList.forEach((ox) => {
     const input = document.getElementById(`ox-${ox}`);
-    input.value = preset.composition[ox] || 0;
+    if (!input) return;
+    if (ox === "FeOt" && currentEngine === "magemin") {
+      // Compute FeOt from FeO + Fe2O3 in preset
+      const feo = preset.composition["FeO"] || 0;
+      const fe2o3 = preset.composition["Fe2O3"] || 0;
+      input.value = parseFloat((feo + fe2o3 * 0.8998).toFixed(3));
+    } else {
+      input.value = preset.composition[ox] || 0;
+    }
   });
 
   // Fill defaults
@@ -468,6 +563,46 @@ function updateDpDt() {
   $dpDtDisplay.textContent = `dP/dT = ${dpdt.toFixed(1)} bar/\u00b0C`;
 }
 
+// ---------------------------------------------------------------------------
+// Engine switching
+// ---------------------------------------------------------------------------
+function switchEngine(engine) {
+  if (engine === currentEngine) return;
+  currentEngine = engine;
+
+  // Update button states
+  $engineSelector.querySelectorAll(".engine-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.engine === engine);
+  });
+
+  // Update info text
+  $engineInfo.textContent = ENGINE_INFO[engine] || "";
+
+  // Toggle fieldset visibility
+  const isMelts = engine === "melts";
+  $meltsModeFieldset.classList.toggle("hidden", !isMelts);
+  $mageminModelFieldset.classList.toggle("hidden", isMelts);
+  $mageminPathFieldset.classList.toggle("hidden", isMelts);
+  $mageminFe3fetFieldset.classList.toggle("hidden", isMelts);
+
+  // Update mode badge
+  if (isMelts) {
+    $modeBadge.textContent = MODE_NAMES[$meltsMode.value] || "";
+  } else {
+    const model = $mageminModel.value;
+    $modeBadge.textContent = "MAGEMin \u2014 " + (MAGEMIN_MODELS[model]?.name || model);
+  }
+
+  // Rebuild composition table for the selected engine
+  buildCompTable();
+}
+
+function onMageminModelChange() {
+  const model = $mageminModel.value;
+  $modeBadge.textContent = "MAGEMin \u2014 " + (MAGEMIN_MODELS[model]?.name || model);
+  $mageminModelInfo.textContent = MAGEMIN_MODELS[model]?.desc || "";
+}
+
 function updateSweepPreview() {
   const from = parseFloat($sweepFrom.value);
   const to = parseFloat($sweepTo.value);
@@ -492,10 +627,17 @@ function onFormSubmit(e) {
   e.preventDefault();
   if (simRunning) return;
 
+  if (currentEngine === "magemin") {
+    submitMageminForm();
+    return;
+  }
+
   // Build config object
   const composition = {};
   OX.forEach((ox) => {
-    const val = parseFloat(document.getElementById(`ox-${ox}`).value);
+    const el = document.getElementById(`ox-${ox}`);
+    if (!el) return;
+    const val = parseFloat(el.value);
     if (val > 0) composition[ox] = val;
   });
 
@@ -597,10 +739,57 @@ function onFormSubmit(e) {
   }
 }
 
+function submitMageminForm() {
+  // Build composition from MAGEMin oxide set
+  const composition = {};
+  OX_MAGEMIN.forEach((ox) => {
+    const el = document.getElementById(`ox-${ox}`);
+    if (!el) return;
+    const val = parseFloat(el.value);
+    if (val > 0) composition[ox] = val;
+  });
+
+  // Validate
+  if (!composition.SiO2 || composition.SiO2 < 1) {
+    showError("Composition must include at least SiO2 > 0 wt%.");
+    return;
+  }
+
+  // Convert FeOt to FeO for the backend (the engine will reconvert)
+  if (composition.FeOt) {
+    composition.FeO = composition.FeOt;
+    delete composition.FeOt;
+  }
+
+  const config = {
+    model: $mageminModel.value,
+    path_mode: $mageminPathMode.value,
+    composition,
+    fe3fet: parseFloat(document.getElementById("fe3fet").value) || 0.1,
+    T_start: parseFloat(document.getElementById("T-start").value),
+    T_end: parseFloat(document.getElementById("T-end").value),
+    dT: Math.abs(parseFloat(document.getElementById("dT").value)) || 2,
+    P_start: parseFloat(document.getElementById("P-start").value),
+    P_end: parseFloat(document.getElementById("P-end").value),
+    dP: 100,
+    crystallization_mode: document.getElementById("cryst-mode").value,
+    find_liquidus: true,
+    suppress_phases: [],
+  };
+
+  const fo2 = document.getElementById("fo2-buffer").value;
+  if (fo2) {
+    config.fO2_buffer = fo2;
+    config.fO2_offset = parseFloat(document.getElementById("fo2-offset").value) || 0;
+  }
+
+  startSimulation(config, "/api/simulate/magemin");
+}
+
 // ---------------------------------------------------------------------------
 // Simulation lifecycle
 // ---------------------------------------------------------------------------
-async function startSimulation(config) {
+async function startSimulation(config, url = "/api/simulate") {
   stopAnimation(); // prevent stale interval from previous sim
   clearAllHighlights();
   simRunning = true;
@@ -614,13 +803,15 @@ async function startSimulation(config) {
   $errorDisplay.classList.add("hidden");
   $progressSection.classList.remove("hidden");
   $progressBar.style.width = "0%";
-  $progressInfo.textContent = "Starting simulation...";
+  $progressInfo.textContent = currentEngine === "magemin"
+    ? "Starting MAGEMin simulation (first run may take 1-2 minutes)..."
+    : "Starting simulation...";
 
   // Clear previous plots
   clearAllPlots();
 
   try {
-    const resp = await fetch("/api/simulate", {
+    const resp = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(config),
@@ -649,7 +840,8 @@ function pollSimulation(simId, config) {
   } else {
     nSteps = Math.abs((config.T_start - config.T_end) / Math.abs(config.dT));
   }
-  $progressInfo.textContent = "Initializing MELTS engine...";
+  const engineLabel = currentEngine === "magemin" ? "MAGEMin" : "MELTS";
+  $progressInfo.textContent = `Initializing ${engineLabel} engine...`;
   $progressBar.style.width = "2%";
 
   const pollInterval = setInterval(async () => {
@@ -1085,7 +1277,10 @@ function updateScrubberHighlight(index) {
   if (!step) return;
 
   // Update info card
-  const phases = step.phases ? step.phases.split("+").filter(Boolean).map(p => p.replace(/\d+$/, "")).join(", ") : "none";
+  const phases = step.phases ? step.phases.split("+").filter(Boolean).map(p => {
+    if (currentEngine === "magemin" && MAGEMIN_PHASE_NAMES[p]) return MAGEMIN_PHASE_NAMES[p];
+    return p.replace(/\d+$/, "");
+  }).join(", ") : "none";
   const liqPct = step.mass_liquid_g && simResults[0].mass_liquid_g
     ? ((step.mass_liquid_g / simResults[0].mass_liquid_g) * 100).toFixed(1)
     : "?";
@@ -1255,8 +1450,13 @@ function detectAndShowToasts(index) {
   const newPhases = curr.filter(p => !prevSet.has(p));
 
   for (const phase of newPhases) {
-    const baseName = phase.replace(/\d+$/, "");
-    const displayName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+    let displayName;
+    if (currentEngine === "magemin" && MAGEMIN_PHASE_NAMES[phase]) {
+      displayName = MAGEMIN_PHASE_NAMES[phase];
+    } else {
+      const baseName = phase.replace(/\d+$/, "");
+      displayName = baseName.charAt(0).toUpperCase() + baseName.slice(1);
+    }
     showToast(`${displayName} crystallizes at ${simResults[index].T_C.toFixed(0)}\u00b0C`);
   }
 }
