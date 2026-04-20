@@ -205,6 +205,8 @@ let currentBatchId = null;
 let currentEngine = "melts"; // "melts" or "magemin"
 let batchMode = false;
 let batchType = "sweep"; // "sweep" or "samples"
+let batchResultMode = "compare"; // "compare" or "individual"
+let batchRunsData = null; // {batchId, runs: [{sim_id, label}]}
 let importedSamples = null; // {samples: [{name, composition}], skippedColumns: [], oxideNames: []}
 let presets = {};
 let plotCache = {};       // { "simId:plotType": true } — tracks fetched plots
@@ -287,6 +289,10 @@ const $sampleSummary = document.getElementById("sample-summary");
 const $sampleWarnings = document.getElementById("sample-warnings");
 const $sampleTableWrapper = document.getElementById("sample-table-wrapper");
 const $sampleFooter = document.getElementById("sample-footer");
+const $batchResultTabs = document.getElementById("batch-result-tabs");
+const $sampleSelector = document.getElementById("sample-selector");
+const $individualSampleSelect = document.getElementById("individual-sample-select");
+const $btnCsvIndividual = document.getElementById("btn-csv-individual");
 
 // ---------------------------------------------------------------------------
 // Initialization
@@ -458,6 +464,34 @@ function bindEvents() {
     e.preventDefault();
     $sampleUploadZone.classList.remove("drag-over");
     if (e.dataTransfer.files.length > 0) handleSampleFile(e.dataTransfer.files[0]);
+  });
+
+  // Batch result mode toggle
+  $batchResultTabs.addEventListener("click", (e) => {
+    const btn = e.target.closest(".batch-result-tab");
+    if (!btn) return;
+    batchResultMode = btn.dataset.resultMode;
+    $batchResultTabs.querySelectorAll(".batch-result-tab").forEach((b) => {
+      b.classList.toggle("active", b.dataset.resultMode === batchResultMode);
+    });
+    $sampleSelector.classList.toggle("hidden", batchResultMode !== "individual");
+    if (batchResultMode === "compare") {
+      const activeTab = document.querySelector(".tab.active");
+      if (activeTab && currentBatchId) fetchComparisonPlotsForTab(activeTab.dataset.tab, currentBatchId);
+    } else if (batchResultMode === "individual") {
+      showIndividualSample();
+    }
+  });
+
+  // Individual sample selector
+  $individualSampleSelect.addEventListener("change", () => {
+    showIndividualSample();
+  });
+
+  // CSV download for individual sample
+  $btnCsvIndividual.addEventListener("click", () => {
+    const simId = $individualSampleSelect.value;
+    if (simId) window.location.href = `/api/simulate/${simId}/csv`;
   });
 }
 
@@ -1035,6 +1069,8 @@ async function startSimulation(config, url = "/api/simulate") {
   $btnRun.disabled = true;
   $btnRun.querySelector(".btn-run-label").textContent = "Running...";
   $emptyState.classList.add("hidden");
+  $batchResultTabs.classList.add("hidden");
+  $sampleSelector.classList.add("hidden");
   $errorDisplay.classList.add("hidden");
   $progressSection.classList.remove("hidden");
   $progressBar.style.width = "0%";
@@ -1182,6 +1218,9 @@ async function startBatch(batchConfig) {
   $scrubberSection.classList.add("hidden");
 
   clearAllPlots();
+  $batchResultTabs.classList.add("hidden");
+  $sampleSelector.classList.add("hidden");
+  batchRunsData = null;
 
   try {
     const resp = await fetch("/api/batch", {
@@ -1239,6 +1278,33 @@ function pollBatch(batchId, totalRuns) {
   }, 1000);
 }
 
+function showIndividualSample() {
+  const simId = $individualSampleSelect.value;
+  if (!simId) return;
+
+  // Switch to single-sim view mode
+  currentSimId = simId;
+  plotCache = {}; // clear to re-fetch for this sample
+
+  // Fetch results for this sample to populate scrubber
+  fetch(`/api/simulate/${simId}/results`)
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.results && data.results.length > 0) {
+        simResults = data.results;
+        $scrubberSection.classList.remove("hidden");
+        $tempScrubber.max = simResults.length - 1;
+        $tempScrubber.value = 0;
+        currentScrubberIndex = 0;
+        clearAllHighlights();
+      }
+      // Fetch plots for current tab
+      const activeTab = document.querySelector(".tab.active");
+      if (activeTab) fetchPlotsForTab(activeTab.dataset.tab, simId);
+    })
+    .catch((err) => console.warn("Failed to load sample results:", err));
+}
+
 function onBatchComplete(batchId, batchData) {
   simRunning = false;
   resetRunButton();
@@ -1246,12 +1312,34 @@ function onBatchComplete(batchId, batchData) {
   $progressInfo.textContent =
     `Batch complete. ${batchData.total_runs} runs finished.`;
 
-  // Hide scrubber for batch mode (not applicable to multi-run comparison)
-  $scrubberSection.classList.add("hidden");
-
-  // Store batch info for plot fetching
   currentBatchId = batchId;
   currentSimId = null;
+  batchResultMode = "compare";
+
+  // Store runs data for individual view
+  batchRunsData = {
+    batchId,
+    runs: batchData.runs.filter((r) => r.status === "done"),
+  };
+
+  // Show batch result tabs
+  $batchResultTabs.classList.remove("hidden");
+  $batchResultTabs.querySelectorAll(".batch-result-tab").forEach((b) => {
+    b.classList.toggle("active", b.dataset.resultMode === "compare");
+  });
+  $sampleSelector.classList.add("hidden");
+
+  // Populate individual sample dropdown
+  $individualSampleSelect.innerHTML = "";
+  for (const run of batchRunsData.runs) {
+    const opt = document.createElement("option");
+    opt.value = run.sim_id;
+    opt.textContent = run.label;
+    $individualSampleSelect.appendChild(opt);
+  }
+
+  // Hide scrubber for comparison mode
+  $scrubberSection.classList.add("hidden");
 
   // Fetch comparison plots for active tab
   const activeTab = document.querySelector(".tab.active");
@@ -1342,7 +1430,11 @@ function switchTab(tabName) {
 
   // Fetch plots for this tab if we have a sim or batch
   if (currentBatchId) {
-    fetchComparisonPlotsForTab(tabName, currentBatchId);
+    if (batchResultMode === "individual" && currentSimId) {
+      fetchPlotsForTab(tabName, currentSimId);
+    } else {
+      fetchComparisonPlotsForTab(tabName, currentBatchId);
+    }
   } else if (currentSimId && simResults.length > 0) {
     fetchPlotsForTab(tabName, currentSimId);
   }

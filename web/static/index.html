@@ -287,6 +287,17 @@
       <!-- Error display -->
       <div id="error-display" class="error-display hidden"></div>
 
+      <!-- Batch result mode tabs (hidden until batch completes) -->
+      <div class="batch-result-tabs hidden" id="batch-result-tabs">
+        <button class="batch-result-tab active" data-result-mode="compare">Summary Comparison</button>
+        <button class="batch-result-tab" data-result-mode="individual">Individual Sample</button>
+      </div>
+      <div class="sample-selector hidden" id="sample-selector">
+        <label>Sample:</label>
+        <select id="individual-sample-select"></select>
+        <button class="btn-download" id="btn-csv-individual" style="font-size:0.75rem;padding:4px 10px">Download CSV</button>
+      </div>
+
       <!-- Tab bar -->
       <div class="tabs" id="tabs">
         <button class="tab active" data-tab="classification">Classification</button>
