@@ -902,17 +902,19 @@ function onFormSubmit(e) {
     if (val > 0) composition[ox] = val;
   });
 
-  // Validate: need at least SiO2
-  if (!composition.SiO2 || composition.SiO2 < 1) {
-    showError("Composition must include at least SiO2 > 0 wt%.");
-    return;
+  // Validate: need at least SiO2 (skip for multi-sample batch — composition comes from Excel)
+  if (!(batchMode && batchType === "samples")) {
+    if (!composition.SiO2 || composition.SiO2 < 1) {
+      showError("Composition must include at least SiO2 > 0 wt%.");
+      return;
+    }
   }
 
   const pathMode = $pathMode.value;
 
   const config = {
     melts_mode: parseInt($meltsMode.value),
-    composition,
+    composition: (batchMode && batchType === "samples") ? { SiO2: 50 } : composition,
     path_mode: pathMode,
     T_start: parseFloat(document.getElementById("T-start").value),
     T_end: parseFloat(document.getElementById("T-end").value),
