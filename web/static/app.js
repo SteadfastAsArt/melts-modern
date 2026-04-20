@@ -435,7 +435,7 @@ function bindEvents() {
   });
   $sweepParam.addEventListener("change", updateSweepPreview);
 
-  // Batch type toggle (sweep / import samples)
+  // Batch type toggle (single-sweep / import samples)
   $batchTypeToggle.addEventListener("click", (e) => {
     const btn = e.target.closest(".batch-type-btn");
     if (!btn) return;
@@ -445,6 +445,12 @@ function bindEvents() {
     });
     $batchSweepConfig.classList.toggle("hidden", batchType !== "sweep");
     $batchSamplesConfig.classList.toggle("hidden", batchType !== "samples");
+    // Import Excel mode implies batch
+    if (batchType === "samples") {
+      batchMode = true;
+    } else {
+      batchMode = $batchToggle.checked;
+    }
     updateRunButtonLabel();
   });
 

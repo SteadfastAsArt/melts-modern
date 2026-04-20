@@ -24,207 +24,69 @@
       </div>
 
       <form id="sim-form" autocomplete="off">
-        <!-- Engine selector -->
-        <fieldset>
-          <legend>Computation Engine</legend>
-          <div class="engine-selector" id="engine-selector">
-            <button type="button" class="engine-btn active" data-engine="melts">
-              <span class="engine-name">MELTS</span>
-              <span class="engine-desc">Ghiorso & Sack</span>
-            </button>
-            <button type="button" class="engine-btn" data-engine="magemin">
-              <span class="engine-name">MAGEMin</span>
-              <span class="engine-desc">Holland-Powell</span>
-            </button>
-          </div>
-          <div class="engine-info" id="engine-info">
-            rhyolite-MELTS: Established model for crustal magmatic systems
-          </div>
-        </fieldset>
 
-        <!-- MELTS mode -->
-        <fieldset id="melts-mode-fieldset">
-          <legend>Calculation Mode</legend>
-          <select id="melts-mode" name="melts_mode">
-            <option value="1">rhyolite-MELTS 1.0.2</option>
-            <option value="2">pMELTS 5.6.1</option>
-            <option value="3">rhyolite-MELTS 1.1.0</option>
-            <option value="4" selected>rhyolite-MELTS 1.2.0</option>
-          </select>
-          <div class="mode-info" id="mode-info">
-            rhyolite-MELTS 1.2.0: 500–2000 °C, 0–3000 bar
+        <!-- ===== GROUP 1: SAMPLE ===== -->
+        <div class="sidebar-group">
+          <div class="group-header group-header--sample">
+            <span class="group-number">1</span> Sample
           </div>
-        </fieldset>
-
-        <!-- MAGEMin model (hidden by default) -->
-        <fieldset id="magemin-model-fieldset" class="hidden">
-          <legend>Thermodynamic Model</legend>
-          <select id="magemin-model" name="magemin_model">
-            <option value="Green2025" selected>Green et al. 2025</option>
-            <option value="Weller2024">Weller et al. 2024</option>
-          </select>
-          <div class="mode-info" id="magemin-model-info">
-            Igneous database: mantle to granite, H&#8322;O + CO&#8322; volatiles
-          </div>
-        </fieldset>
-
-        <!-- MAGEMin path mode (hidden by default) -->
-        <fieldset id="magemin-path-fieldset" class="hidden">
-          <legend>Path Mode</legend>
-          <select id="magemin-path-mode" name="path_mode">
-            <option value="isobaric" selected>Isobaric (constant P)</option>
-            <option value="isothermal">Isothermal (constant T)</option>
-            <option value="polybaric">Polybaric (varying P-T)</option>
-          </select>
-        </fieldset>
-
-        <!-- MAGEMin Fe3+/FeT (hidden by default) -->
-        <fieldset id="magemin-fe3fet-fieldset" class="hidden">
-          <legend>Iron Speciation</legend>
-          <div class="input-row">
-            <label>Fe<sup>3+</sup>/FeT
-              <input type="number" id="fe3fet" name="fe3fet" value="0.1" step="0.01" min="0" max="1">
-            </label>
-          </div>
-          <div class="mode-info">
-            MAGEMin uses total iron as FeO<sub>t</sub> + Fe<sup>3+</sup>/Fe<sub>T</sub> ratio
-          </div>
-        </fieldset>
-
-        <!-- Preset -->
-        <fieldset>
-          <legend>Preset Composition</legend>
-          <select id="preset-select">
-            <option value="">-- Custom --</option>
-          </select>
-        </fieldset>
-
-        <!-- Composition -->
-        <fieldset>
-          <legend>Composition (wt%)</legend>
-          <table class="comp-table" id="comp-table">
-            <thead><tr><th>Oxide</th><th>wt%</th></tr></thead>
-            <tbody id="comp-body"></tbody>
-          </table>
-          <button type="button" class="btn-link" id="toggle-minor">Show more oxides...</button>
-        </fieldset>
-
-        <!-- Path Mode -->
-        <fieldset>
-          <legend>Simulation Path</legend>
-          <select id="path-mode" name="path_mode">
-            <option value="isobaric" selected>Isobaric Cooling</option>
-            <option value="isothermal">Isothermal Decompression</option>
-            <option value="polybaric">Polybaric (Linear P-T)</option>
-            <option value="isentropic">Isentropic (Adiabatic)</option>
-          </select>
-          <div class="mode-description" id="path-mode-desc">
-            Cool at constant pressure. Most common mode for magma chamber crystallization.
-          </div>
-        </fieldset>
-
-        <!-- T range -->
-        <fieldset id="fieldset-temperature">
-          <legend id="legend-temperature">Temperature (&deg;C)</legend>
-          <div class="input-row">
-            <label id="label-T-start">Start<input type="number" id="T-start" name="T_start" value="1400" step="1"></label>
-            <label id="label-T-end">End<input type="number" id="T-end" name="T_end" value="900" step="1"></label>
-            <label id="label-dT">Step<input type="number" id="dT" name="dT" value="-2" step="0.5"></label>
-          </div>
-        </fieldset>
-
-        <!-- P range -->
-        <fieldset id="fieldset-pressure">
-          <legend id="legend-pressure">Pressure (bar)</legend>
-          <div class="input-row">
-            <label id="label-P-start">Start<input type="number" id="P-start" name="P_start" value="5000" step="1"></label>
-            <label id="label-P-end">End<input type="number" id="P-end" name="P_end" value="1000" step="1"></label>
-            <label id="label-dP" class="hidden">Step<input type="number" id="dP" name="dP" value="-100" step="10"></label>
-          </div>
-          <div class="dp-dt-display" id="dp-dt-display">dP/dT = 8.0 bar/&deg;C</div>
-        </fieldset>
-
-        <!-- fO2 buffer -->
-        <fieldset>
-          <legend>fO<sub>2</sub> Buffer</legend>
-          <div class="input-row">
-            <label>Buffer
-              <select id="fo2-buffer" name="fo2_buffer">
-                <option value="">None</option>
-                <option value="FMQ">FMQ</option>
-                <option value="NNO">NNO</option>
-                <option value="IW">IW</option>
-                <option value="HM">HM</option>
-                <option value="COH">COH</option>
-              </select>
-            </label>
-            <label>Offset<input type="number" id="fo2-offset" name="fo2_offset" value="0" step="0.1"></label>
-          </div>
-        </fieldset>
-
-        <!-- Crystallization mode -->
-        <fieldset>
-          <legend>Crystallization Mode</legend>
-          <select id="cryst-mode" name="crystallization_mode">
-            <option value="fractionate" selected>Fractionate Solids</option>
-            <option value="equilibrium">Equilibrium</option>
-          </select>
-        </fieldset>
-
-        <!-- Phase selection -->
-        <fieldset>
-          <legend>Phase Selection <span class="phase-legend-help" title="Suppress phases you know cannot form at your conditions. Suppressed phases are excluded from the equilibrium calculation.">?</span></legend>
-          <div class="phase-presets" id="phase-presets">
-            <button type="button" class="phase-preset-btn active" data-preset="default">Standard</button>
-            <button type="button" class="phase-preset-btn" data-preset="shallow">Shallow</button>
-            <button type="button" class="phase-preset-btn" data-preset="deep">Deep</button>
-            <button type="button" class="phase-preset-btn" data-preset="all">All</button>
-          </div>
-          <div class="phase-info" id="phase-info">Suppressing: tridymite, cristobalite</div>
-          <div class="phase-groups hidden" id="phase-groups">
-            <!-- Groups inserted by JS -->
-          </div>
-          <button type="button" class="btn-link" id="toggle-phases">Customize phases...</button>
-        </fieldset>
-
-        <!-- Batch mode -->
-        <fieldset id="batch-fieldset">
-          <legend>Batch Mode</legend>
-          <div class="batch-toggle-row">
-            <label class="toggle-label">
-              <input type="checkbox" id="batch-toggle"> Enable batch mode
-            </label>
-          </div>
-          <div class="batch-config hidden" id="batch-config">
-            <!-- Batch type selector -->
+          <div class="group-body">
+            <!-- Input mode: single vs import -->
             <div class="batch-type-toggle" id="batch-type-toggle">
-              <button type="button" class="batch-type-btn active" data-batch-type="sweep">Parameter Sweep</button>
-              <button type="button" class="batch-type-btn" data-batch-type="samples">Import Samples</button>
+              <button type="button" class="batch-type-btn active" data-batch-type="sweep">Single / Sweep</button>
+              <button type="button" class="batch-type-btn" data-batch-type="samples">Import Excel</button>
             </div>
 
-            <!-- Sweep config (existing) -->
-            <div class="batch-sweep-config" id="batch-sweep-config">
-              <div class="input-row">
-                <label>Sweep Parameter
-                  <select id="sweep-param">
-                    <option value="H2O">H&#8322;O (wt%)</option>
-                    <option value="pressure">Pressure (bar)</option>
-                    <option value="fo2_offset">fO&#8322; Offset</option>
-                    <option value="temperature">T Start (&deg;C)</option>
-                  </select>
-                </label>
-              </div>
-              <div class="input-row" style="margin-top: 8px;">
-                <label>From<input type="number" id="sweep-from" value="0" step="0.5"></label>
-                <label>To<input type="number" id="sweep-to" value="4" step="0.5"></label>
-                <label>Steps<input type="number" id="sweep-steps" value="5" min="2" max="10" step="1"></label>
-              </div>
-              <div class="sweep-preview" id="sweep-preview">
-                Values: 0.0, 1.0, 2.0, 3.0, 4.0
-              </div>
+            <!-- Single / Sweep: preset + composition -->
+            <div id="batch-sweep-config">
+              <fieldset>
+                <legend>Preset</legend>
+                <select id="preset-select">
+                  <option value="">-- Custom --</option>
+                </select>
+              </fieldset>
+
+              <fieldset>
+                <legend>Composition (wt%)</legend>
+                <table class="comp-table" id="comp-table">
+                  <thead><tr><th>Oxide</th><th>wt%</th></tr></thead>
+                  <tbody id="comp-body"></tbody>
+                </table>
+                <button type="button" class="btn-link" id="toggle-minor">Show more oxides...</button>
+              </fieldset>
+
+              <!-- Sweep options (hidden until batch enabled) -->
+              <fieldset id="batch-fieldset">
+                <legend>Parameter Sweep</legend>
+                <div class="batch-toggle-row">
+                  <label class="toggle-label">
+                    <input type="checkbox" id="batch-toggle"> Enable parameter sweep
+                  </label>
+                </div>
+                <div class="batch-config hidden" id="batch-config">
+                  <div class="input-row">
+                    <label>Sweep Parameter
+                      <select id="sweep-param">
+                        <option value="H2O">H&#8322;O (wt%)</option>
+                        <option value="pressure">Pressure (bar)</option>
+                        <option value="fo2_offset">fO&#8322; Offset</option>
+                        <option value="temperature">T Start (&deg;C)</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="input-row" style="margin-top: 8px;">
+                    <label>From<input type="number" id="sweep-from" value="0" step="0.5"></label>
+                    <label>To<input type="number" id="sweep-to" value="4" step="0.5"></label>
+                    <label>Steps<input type="number" id="sweep-steps" value="5" min="2" max="10" step="1"></label>
+                  </div>
+                  <div class="sweep-preview" id="sweep-preview">
+                    Values: 0.0, 1.0, 2.0, 3.0, 4.0
+                  </div>
+                </div>
+              </fieldset>
             </div>
 
-            <!-- Import samples config -->
+            <!-- Import Excel: upload + preview -->
             <div class="batch-samples-config hidden" id="batch-samples-config">
               <div class="sample-upload-zone" id="sample-upload-zone">
                 <div class="upload-icon">&#128196;</div>
@@ -244,7 +106,161 @@
               </div>
             </div>
           </div>
-        </fieldset>
+        </div>
+
+        <!-- ===== GROUP 2: CONDITIONS ===== -->
+        <div class="sidebar-group">
+          <div class="group-header group-header--conditions">
+            <span class="group-number">2</span> Conditions
+          </div>
+          <div class="group-body">
+            <fieldset>
+              <legend>Simulation Path</legend>
+              <select id="path-mode" name="path_mode">
+                <option value="isobaric" selected>Isobaric Cooling</option>
+                <option value="isothermal">Isothermal Decompression</option>
+                <option value="polybaric">Polybaric (Linear P-T)</option>
+                <option value="isentropic">Isentropic (Adiabatic)</option>
+              </select>
+              <div class="mode-description" id="path-mode-desc">
+                Cool at constant pressure. Most common mode for magma chamber crystallization.
+              </div>
+            </fieldset>
+
+            <fieldset id="fieldset-temperature">
+              <legend id="legend-temperature">Temperature (&deg;C)</legend>
+              <div class="input-row">
+                <label id="label-T-start">Start<input type="number" id="T-start" name="T_start" value="1400" step="1"></label>
+                <label id="label-T-end">End<input type="number" id="T-end" name="T_end" value="900" step="1"></label>
+                <label id="label-dT">Step<input type="number" id="dT" name="dT" value="-2" step="0.5"></label>
+              </div>
+            </fieldset>
+
+            <fieldset id="fieldset-pressure">
+              <legend id="legend-pressure">Pressure (bar)</legend>
+              <div class="input-row">
+                <label id="label-P-start">Start<input type="number" id="P-start" name="P_start" value="5000" step="1"></label>
+                <label id="label-P-end">End<input type="number" id="P-end" name="P_end" value="1000" step="1"></label>
+                <label id="label-dP" class="hidden">Step<input type="number" id="dP" name="dP" value="-100" step="10"></label>
+              </div>
+              <div class="dp-dt-display" id="dp-dt-display">dP/dT = 8.0 bar/&deg;C</div>
+            </fieldset>
+
+            <fieldset>
+              <legend>fO<sub>2</sub> Buffer</legend>
+              <div class="input-row">
+                <label>Buffer
+                  <select id="fo2-buffer" name="fo2_buffer">
+                    <option value="">None</option>
+                    <option value="FMQ">FMQ</option>
+                    <option value="NNO">NNO</option>
+                    <option value="IW">IW</option>
+                    <option value="HM">HM</option>
+                    <option value="COH">COH</option>
+                  </select>
+                </label>
+                <label>Offset<input type="number" id="fo2-offset" name="fo2_offset" value="0" step="0.1"></label>
+              </div>
+            </fieldset>
+          </div>
+        </div>
+
+        <!-- ===== GROUP 3: MODEL SETTINGS ===== -->
+        <div class="sidebar-group">
+          <div class="group-header group-header--model">
+            <span class="group-number">3</span> Model Settings
+          </div>
+          <div class="group-body">
+            <fieldset>
+              <legend>Computation Engine</legend>
+              <div class="engine-selector" id="engine-selector">
+                <button type="button" class="engine-btn active" data-engine="melts">
+                  <span class="engine-name">MELTS</span>
+                  <span class="engine-desc">Ghiorso & Sack</span>
+                </button>
+                <button type="button" class="engine-btn" data-engine="magemin">
+                  <span class="engine-name">MAGEMin</span>
+                  <span class="engine-desc">Holland-Powell</span>
+                </button>
+              </div>
+              <div class="engine-info" id="engine-info">
+                rhyolite-MELTS: Established model for crustal magmatic systems
+              </div>
+            </fieldset>
+
+            <!-- MELTS mode -->
+            <fieldset id="melts-mode-fieldset">
+              <legend>Calculation Mode</legend>
+              <select id="melts-mode" name="melts_mode">
+                <option value="1">rhyolite-MELTS 1.0.2</option>
+                <option value="2">pMELTS 5.6.1</option>
+                <option value="3">rhyolite-MELTS 1.1.0</option>
+                <option value="4" selected>rhyolite-MELTS 1.2.0</option>
+              </select>
+              <div class="mode-info" id="mode-info">
+                rhyolite-MELTS 1.2.0: 500–2000 °C, 0–3000 bar
+              </div>
+            </fieldset>
+
+            <!-- MAGEMin model (hidden by default) -->
+            <fieldset id="magemin-model-fieldset" class="hidden">
+              <legend>Thermodynamic Model</legend>
+              <select id="magemin-model" name="magemin_model">
+                <option value="Green2025" selected>Green et al. 2025</option>
+                <option value="Weller2024">Weller et al. 2024</option>
+              </select>
+              <div class="mode-info" id="magemin-model-info">
+                Igneous database: mantle to granite, H&#8322;O + CO&#8322; volatiles
+              </div>
+            </fieldset>
+
+            <!-- MAGEMin path mode (hidden by default) -->
+            <fieldset id="magemin-path-fieldset" class="hidden">
+              <legend>Path Mode</legend>
+              <select id="magemin-path-mode" name="path_mode">
+                <option value="isobaric" selected>Isobaric (constant P)</option>
+                <option value="isothermal">Isothermal (constant T)</option>
+                <option value="polybaric">Polybaric (varying P-T)</option>
+              </select>
+            </fieldset>
+
+            <!-- MAGEMin Fe3+/FeT (hidden by default) -->
+            <fieldset id="magemin-fe3fet-fieldset" class="hidden">
+              <legend>Iron Speciation</legend>
+              <div class="input-row">
+                <label>Fe<sup>3+</sup>/FeT
+                  <input type="number" id="fe3fet" name="fe3fet" value="0.1" step="0.01" min="0" max="1">
+                </label>
+              </div>
+              <div class="mode-info">
+                MAGEMin uses total iron as FeO<sub>t</sub> + Fe<sup>3+</sup>/Fe<sub>T</sub> ratio
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Crystallization Mode</legend>
+              <select id="cryst-mode" name="crystallization_mode">
+                <option value="fractionate" selected>Fractionate Solids</option>
+                <option value="equilibrium">Equilibrium</option>
+              </select>
+            </fieldset>
+
+            <fieldset>
+              <legend>Phase Selection <span class="phase-legend-help" title="Suppress phases you know cannot form at your conditions. Suppressed phases are excluded from the equilibrium calculation.">?</span></legend>
+              <div class="phase-presets" id="phase-presets">
+                <button type="button" class="phase-preset-btn active" data-preset="default">Standard</button>
+                <button type="button" class="phase-preset-btn" data-preset="shallow">Shallow</button>
+                <button type="button" class="phase-preset-btn" data-preset="deep">Deep</button>
+                <button type="button" class="phase-preset-btn" data-preset="all">All</button>
+              </div>
+              <div class="phase-info" id="phase-info">Suppressing: tridymite, cristobalite</div>
+              <div class="phase-groups hidden" id="phase-groups">
+                <!-- Groups inserted by JS -->
+              </div>
+              <button type="button" class="btn-link" id="toggle-phases">Customize phases...</button>
+            </fieldset>
+          </div>
+        </div>
 
         <button type="submit" class="btn-run" id="btn-run">
           <span class="btn-run-label">Run Simulation</span>
