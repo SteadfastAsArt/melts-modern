@@ -420,8 +420,7 @@ function bindEvents() {
   $batchToggle.addEventListener("change", (e) => {
     batchMode = e.target.checked;
     $batchConfig.classList.toggle("hidden", !batchMode);
-    $btnRun.querySelector(".btn-run-label").textContent =
-      batchMode ? "Run Batch" : "Run Simulation";
+    updateRunButtonLabel();
   });
 
   // Update sweep preview when inputs change
@@ -440,6 +439,7 @@ function bindEvents() {
     });
     $batchSweepConfig.classList.toggle("hidden", batchType !== "sweep");
     $batchSamplesConfig.classList.toggle("hidden", batchType !== "samples");
+    updateRunButtonLabel();
   });
 
   // File upload: click and drag-drop
@@ -807,6 +807,7 @@ function updateSampleFooter() {
   const total = importedSamples.samples.length;
   const selected = $sampleTableWrapper.querySelectorAll(".sample-cb:checked").length;
   $sampleFooter.textContent = `Selected ${selected} / ${total} samples`;
+  updateRunButtonLabel();
 }
 
 function getSelectedSamples() {
@@ -824,6 +825,19 @@ function clearImportedSamples() {
   $samplePreview.classList.add("hidden");
   $sampleUploadZone.classList.remove("hidden");
   $sampleFileInput.value = "";
+  updateRunButtonLabel();
+}
+
+function updateRunButtonLabel() {
+  if (!batchMode) {
+    $btnRun.querySelector(".btn-run-label").textContent = "Run Simulation";
+  } else if (batchType === "samples") {
+    const count = importedSamples ? getSelectedSamples().length : 0;
+    $btnRun.querySelector(".btn-run-label").textContent =
+      count > 0 ? `Run Batch (${count} samples)` : "Run Batch";
+  } else {
+    $btnRun.querySelector(".btn-run-label").textContent = "Run Batch";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -921,25 +935,40 @@ function onFormSubmit(e) {
   }
 
   if (batchMode) {
-    const from = parseFloat($sweepFrom.value);
-    const to = parseFloat($sweepTo.value);
-    const steps = parseInt($sweepSteps.value);
-    if (isNaN(from) || isNaN(to) || isNaN(steps) || steps < 2) {
-      showError("Invalid sweep parameters. Need From, To, and Steps >= 2.");
-      return;
+    if (batchType === "samples") {
+      // Multi-sample batch
+      const selected = getSelectedSamples();
+      if (selected.length === 0) {
+        showError("No samples selected. Import an Excel file and select at least one sample.");
+        return;
+      }
+      const batchConfig = {
+        base_config: config,
+        samples: selected,
+      };
+      startBatch(batchConfig);
+    } else {
+      // Parameter sweep (existing)
+      const from = parseFloat($sweepFrom.value);
+      const to = parseFloat($sweepTo.value);
+      const steps = parseInt($sweepSteps.value);
+      if (isNaN(from) || isNaN(to) || isNaN(steps) || steps < 2) {
+        showError("Invalid sweep parameters. Need From, To, and Steps >= 2.");
+        return;
+      }
+      const values = [];
+      for (let i = 0; i < steps; i++) {
+        values.push(from + (to - from) * i / (steps - 1));
+      }
+      const batchConfig = {
+        base_config: config,
+        sweep: {
+          param: $sweepParam.value,
+          values: values,
+        },
+      };
+      startBatch(batchConfig);
     }
-    const values = [];
-    for (let i = 0; i < steps; i++) {
-      values.push(from + (to - from) * i / (steps - 1));
-    }
-    const batchConfig = {
-      base_config: config,
-      sweep: {
-        param: $sweepParam.value,
-        values: values,
-      },
-    };
-    startBatch(batchConfig);
   } else {
     startSimulation(config);
   }
