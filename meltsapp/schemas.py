@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 class SimConfig(BaseModel):
@@ -117,14 +117,40 @@ class SweepParam(BaseModel):
     """Optional labels for each value (auto-generated if empty)."""
 
 
+class SampleEntry(BaseModel):
+    """A single sample with name and composition for multi-sample batch."""
+
+    name: str
+    """Sample name (e.g. 'DH-01')."""
+
+    composition: dict[str, float]
+    """Oxide name -> wt% (e.g. {'SiO2': 48.68, 'MgO': 9.10, ...})."""
+
+
 class BatchConfig(BaseModel):
-    """Configuration for a batch of simulations with parameter sweeps."""
+    """Configuration for a batch of simulations.
+
+    Exactly one of `sweep` or `samples` must be provided.
+    - sweep: parameter sweep across a single base composition
+    - samples: multiple samples each with their own composition
+    """
 
     base_config: SimConfig
     """The base simulation configuration (all shared parameters)."""
 
-    sweep: SweepParam
-    """The parameter to sweep across runs."""
+    sweep: SweepParam | None = None
+    """Parameter sweep configuration (mutually exclusive with samples)."""
+
+    samples: list[SampleEntry] | None = None
+    """Multi-sample batch (mutually exclusive with sweep)."""
+
+    @model_validator(mode="after")
+    def check_sweep_or_samples(self):
+        if self.sweep is None and self.samples is None:
+            raise ValueError("Either 'sweep' or 'samples' must be provided")
+        if self.sweep is not None and self.samples is not None:
+            raise ValueError("Cannot provide both 'sweep' and 'samples'")
+        return self
 
 
 @dataclass
