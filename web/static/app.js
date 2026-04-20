@@ -204,6 +204,8 @@ let currentSimId = null;
 let currentBatchId = null;
 let currentEngine = "melts"; // "melts" or "magemin"
 let batchMode = false;
+let batchType = "sweep"; // "sweep" or "samples"
+let importedSamples = null; // {samples: [{name, composition}], skippedColumns: [], oxideNames: []}
 let presets = {};
 let plotCache = {};       // { "simId:plotType": true } — tracks fetched plots
 let simResults = [];      // accumulated results for data table
@@ -275,6 +277,16 @@ const $sweepFrom = document.getElementById("sweep-from");
 const $sweepTo = document.getElementById("sweep-to");
 const $sweepSteps = document.getElementById("sweep-steps");
 const $sweepPreview = document.getElementById("sweep-preview");
+const $batchTypeToggle = document.getElementById("batch-type-toggle");
+const $batchSweepConfig = document.getElementById("batch-sweep-config");
+const $batchSamplesConfig = document.getElementById("batch-samples-config");
+const $sampleUploadZone = document.getElementById("sample-upload-zone");
+const $sampleFileInput = document.getElementById("sample-file-input");
+const $samplePreview = document.getElementById("sample-preview");
+const $sampleSummary = document.getElementById("sample-summary");
+const $sampleWarnings = document.getElementById("sample-warnings");
+const $sampleTableWrapper = document.getElementById("sample-table-wrapper");
+const $sampleFooter = document.getElementById("sample-footer");
 
 // ---------------------------------------------------------------------------
 // Initialization
@@ -417,6 +429,36 @@ function bindEvents() {
     el.addEventListener("input", updateSweepPreview);
   });
   $sweepParam.addEventListener("change", updateSweepPreview);
+
+  // Batch type toggle (sweep / import samples)
+  $batchTypeToggle.addEventListener("click", (e) => {
+    const btn = e.target.closest(".batch-type-btn");
+    if (!btn) return;
+    batchType = btn.dataset.batchType;
+    $batchTypeToggle.querySelectorAll(".batch-type-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.batchType === batchType);
+    });
+    $batchSweepConfig.classList.toggle("hidden", batchType !== "sweep");
+    $batchSamplesConfig.classList.toggle("hidden", batchType !== "samples");
+  });
+
+  // File upload: click and drag-drop
+  $sampleUploadZone.addEventListener("click", () => $sampleFileInput.click());
+  $sampleFileInput.addEventListener("change", (e) => {
+    if (e.target.files.length > 0) handleSampleFile(e.target.files[0]);
+  });
+  $sampleUploadZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    $sampleUploadZone.classList.add("drag-over");
+  });
+  $sampleUploadZone.addEventListener("dragleave", () => {
+    $sampleUploadZone.classList.remove("drag-over");
+  });
+  $sampleUploadZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    $sampleUploadZone.classList.remove("drag-over");
+    if (e.dataTransfer.files.length > 0) handleSampleFile(e.dataTransfer.files[0]);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -618,6 +660,170 @@ function updateSweepPreview() {
   const paramName = $sweepParam.options[$sweepParam.selectedIndex].textContent;
   $sweepPreview.textContent =
     `Values: ${values.map((v) => v.toFixed(1)).join(", ")} (${paramName})`;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-sample import
+// ---------------------------------------------------------------------------
+
+/** Map of lowercase oxide names to canonical MELTS oxide names. */
+const OX_LOWER_MAP = {};
+OX.forEach((ox) => { OX_LOWER_MAP[ox.toLowerCase()] = ox; });
+
+function handleSampleFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+      if (rows.length < 2) {
+        showError("File has no data rows. Need at least a header row and one sample.");
+        return;
+      }
+
+      const headers = rows[0].map(String);
+      const skippedColumns = [];
+      const oxideMap = []; // [{colIdx, oxName}]
+
+      for (let c = 1; c < headers.length; c++) {
+        const raw = headers[c].trim();
+        const canonical = OX_LOWER_MAP[raw.toLowerCase()];
+        if (canonical) {
+          oxideMap.push({ colIdx: c, oxName: canonical });
+        } else if (raw !== "") {
+          skippedColumns.push(raw);
+        }
+      }
+
+      if (oxideMap.length === 0) {
+        showError("No recognized oxide columns. Headers must use standard names: " + OX.slice(0, 10).join(", ") + ", ...");
+        return;
+      }
+
+      const samples = [];
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        const name = String(row[0] || "").trim();
+        if (!name) continue;
+
+        const composition = {};
+        let hasValue = false;
+        for (const { colIdx, oxName } of oxideMap) {
+          const val = parseFloat(row[colIdx]);
+          if (!isNaN(val) && val > 0) {
+            composition[oxName] = val;
+            hasValue = true;
+          }
+        }
+        if (hasValue) {
+          samples.push({ name, composition });
+        }
+      }
+
+      if (samples.length === 0) {
+        showError("No valid samples found. Each row needs a name and at least one oxide value > 0.");
+        return;
+      }
+
+      importedSamples = { samples, skippedColumns, oxideNames: oxideMap.map((m) => m.oxName) };
+      renderSamplePreview();
+    } catch (err) {
+      showError("Unable to read file: " + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderSamplePreview() {
+  if (!importedSamples) return;
+  const { samples, skippedColumns, oxideNames } = importedSamples;
+
+  // Summary bar
+  $sampleSummary.innerHTML =
+    `<span>Identified ${samples.length} samples, ${oxideNames.length} oxides</span>` +
+    `<button type="button" class="clear-btn" id="clear-samples-btn">Clear</button>`;
+  document.getElementById("clear-samples-btn").addEventListener("click", clearImportedSamples);
+
+  // Warnings
+  if (skippedColumns.length > 0) {
+    $sampleWarnings.textContent = "Ignored columns: " + skippedColumns.join(", ");
+  } else {
+    $sampleWarnings.textContent = "";
+  }
+
+  // Preview columns: show SiO2, MgO, CaO, Na2O, K2O, H2O if present
+  const previewOx = ["SiO2", "MgO", "CaO", "Na2O", "K2O", "H2O"].filter((ox) => oxideNames.includes(ox));
+
+  // Table
+  let html = "<table><thead><tr>";
+  html += '<th><input type="checkbox" id="sample-select-all" checked></th>';
+  html += "<th>Sample</th>";
+  previewOx.forEach((ox) => { html += `<th style="text-align:right">${formatOxide(ox)}</th>`; });
+  if (oxideNames.length > previewOx.length) html += '<th style="text-align:center;color:var(--text-muted)">...</th>';
+  html += "</tr></thead><tbody>";
+
+  samples.forEach((s, i) => {
+    html += `<tr data-sample-idx="${i}">`;
+    html += `<td><input type="checkbox" class="sample-cb" data-idx="${i}" checked></td>`;
+    html += `<td style="font-weight:600">${s.name}</td>`;
+    previewOx.forEach((ox) => {
+      const val = s.composition[ox];
+      html += `<td style="text-align:right">${val !== undefined ? val.toFixed(2) : "-"}</td>`;
+    });
+    if (oxideNames.length > previewOx.length) html += '<td style="text-align:center;color:var(--text-muted)">...</td>';
+    html += "</tr>";
+  });
+
+  html += "</tbody></table>";
+  $sampleTableWrapper.innerHTML = html;
+
+  updateSampleFooter();
+  $samplePreview.classList.remove("hidden");
+  $sampleUploadZone.classList.add("hidden");
+
+  // Checkbox events
+  document.getElementById("sample-select-all").addEventListener("change", (e) => {
+    const checked = e.target.checked;
+    $sampleTableWrapper.querySelectorAll(".sample-cb").forEach((cb) => {
+      cb.checked = checked;
+      cb.closest("tr").classList.toggle("deselected", !checked);
+    });
+    updateSampleFooter();
+  });
+
+  $sampleTableWrapper.querySelectorAll(".sample-cb").forEach((cb) => {
+    cb.addEventListener("change", (e) => {
+      e.target.closest("tr").classList.toggle("deselected", !e.target.checked);
+      updateSampleFooter();
+    });
+  });
+}
+
+function updateSampleFooter() {
+  if (!importedSamples) return;
+  const total = importedSamples.samples.length;
+  const selected = $sampleTableWrapper.querySelectorAll(".sample-cb:checked").length;
+  $sampleFooter.textContent = `Selected ${selected} / ${total} samples`;
+}
+
+function getSelectedSamples() {
+  if (!importedSamples) return [];
+  const selected = [];
+  $sampleTableWrapper.querySelectorAll(".sample-cb:checked").forEach((cb) => {
+    const idx = parseInt(cb.dataset.idx);
+    selected.push(importedSamples.samples[idx]);
+  });
+  return selected;
+}
+
+function clearImportedSamples() {
+  importedSamples = null;
+  $samplePreview.classList.add("hidden");
+  $sampleUploadZone.classList.remove("hidden");
+  $sampleFileInput.value = "";
 }
 
 // ---------------------------------------------------------------------------
@@ -859,6 +1065,9 @@ function pollSimulation(simId, config) {
           `Step ${data.results.length} / ~${Math.round(nSteps)} | T = ${latest.T_C.toFixed(0)}\u00b0C | P = ${latest.P_bar.toFixed(0)} bar`;
         // Keep simResults in sync
         simResults = data.results;
+      } else if (data.init_message) {
+        // Show init/progress messages (e.g. Julia JIT, MAGEMin activation)
+        $progressInfo.textContent = data.init_message;
       }
 
       if (data.status === "done") {
