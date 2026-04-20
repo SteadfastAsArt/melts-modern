@@ -9,6 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js"></script>
 </head>
 <body>
   <div class="app">
@@ -191,27 +192,56 @@
           <legend>Batch Mode</legend>
           <div class="batch-toggle-row">
             <label class="toggle-label">
-              <input type="checkbox" id="batch-toggle"> Enable parameter sweep
+              <input type="checkbox" id="batch-toggle"> Enable batch mode
             </label>
           </div>
           <div class="batch-config hidden" id="batch-config">
-            <div class="input-row">
-              <label>Sweep Parameter
-                <select id="sweep-param">
-                  <option value="H2O">H&#8322;O (wt%)</option>
-                  <option value="pressure">Pressure (bar)</option>
-                  <option value="fo2_offset">fO&#8322; Offset</option>
-                  <option value="temperature">T Start (&deg;C)</option>
-                </select>
-              </label>
+            <!-- Batch type selector -->
+            <div class="batch-type-toggle" id="batch-type-toggle">
+              <button type="button" class="batch-type-btn active" data-batch-type="sweep">Parameter Sweep</button>
+              <button type="button" class="batch-type-btn" data-batch-type="samples">Import Samples</button>
             </div>
-            <div class="input-row" style="margin-top: 8px;">
-              <label>From<input type="number" id="sweep-from" value="0" step="0.5"></label>
-              <label>To<input type="number" id="sweep-to" value="4" step="0.5"></label>
-              <label>Steps<input type="number" id="sweep-steps" value="5" min="2" max="10" step="1"></label>
+
+            <!-- Sweep config (existing) -->
+            <div class="batch-sweep-config" id="batch-sweep-config">
+              <div class="input-row">
+                <label>Sweep Parameter
+                  <select id="sweep-param">
+                    <option value="H2O">H&#8322;O (wt%)</option>
+                    <option value="pressure">Pressure (bar)</option>
+                    <option value="fo2_offset">fO&#8322; Offset</option>
+                    <option value="temperature">T Start (&deg;C)</option>
+                  </select>
+                </label>
+              </div>
+              <div class="input-row" style="margin-top: 8px;">
+                <label>From<input type="number" id="sweep-from" value="0" step="0.5"></label>
+                <label>To<input type="number" id="sweep-to" value="4" step="0.5"></label>
+                <label>Steps<input type="number" id="sweep-steps" value="5" min="2" max="10" step="1"></label>
+              </div>
+              <div class="sweep-preview" id="sweep-preview">
+                Values: 0.0, 1.0, 2.0, 3.0, 4.0
+              </div>
             </div>
-            <div class="sweep-preview" id="sweep-preview">
-              Values: 0.0, 1.0, 2.0, 3.0, 4.0
+
+            <!-- Import samples config -->
+            <div class="batch-samples-config hidden" id="batch-samples-config">
+              <div class="sample-upload-zone" id="sample-upload-zone">
+                <div class="upload-icon">&#128196;</div>
+                <div class="upload-text">Drop Excel/CSV file here</div>
+                <div class="upload-hint">or click to select file</div>
+                <div class="upload-formats">.xlsx / .xls / .csv</div>
+                <input type="file" id="sample-file-input" accept=".xlsx,.xls,.csv" hidden>
+              </div>
+              <div class="upload-template-link">
+                <a href="/static/melts_template.xlsx" download>Download template Excel</a>
+              </div>
+              <div class="sample-preview hidden" id="sample-preview">
+                <div class="sample-summary" id="sample-summary"></div>
+                <div class="sample-warnings" id="sample-warnings"></div>
+                <div class="sample-table-wrapper" id="sample-table-wrapper"></div>
+                <div class="sample-footer" id="sample-footer"></div>
+              </div>
             </div>
           </div>
         </fieldset>
