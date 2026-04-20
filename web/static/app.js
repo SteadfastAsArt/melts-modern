@@ -293,6 +293,7 @@ const $batchResultTabs = document.getElementById("batch-result-tabs");
 const $sampleSelector = document.getElementById("sample-selector");
 const $individualSampleSelect = document.getElementById("individual-sample-select");
 const $btnCsvIndividual = document.getElementById("btn-csv-individual");
+const $batchFieldset = document.getElementById("batch-fieldset");
 
 // ---------------------------------------------------------------------------
 // Initialization
@@ -435,7 +436,7 @@ function bindEvents() {
   });
   $sweepParam.addEventListener("change", updateSweepPreview);
 
-  // Batch type toggle (single-sweep / import samples)
+  // Sample input mode toggle (single / import Excel)
   $batchTypeToggle.addEventListener("click", (e) => {
     const btn = e.target.closest(".batch-type-btn");
     if (!btn) return;
@@ -443,8 +444,11 @@ function bindEvents() {
     $batchTypeToggle.querySelectorAll(".batch-type-btn").forEach((b) => {
       b.classList.toggle("active", b.dataset.batchType === batchType);
     });
+    // Toggle sample input vs import panels
     $batchSweepConfig.classList.toggle("hidden", batchType !== "sweep");
     $batchSamplesConfig.classList.toggle("hidden", batchType !== "samples");
+    // Hide parameter sweep in Conditions when importing (multi-sample is already batch)
+    $batchFieldset.classList.toggle("hidden", batchType === "samples");
     // Import Excel mode implies batch
     if (batchType === "samples") {
       batchMode = true;
