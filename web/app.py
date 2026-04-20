@@ -34,7 +34,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from meltsapp import OX
 from meltsapp.presets import PRESETS
-from meltsapp.schemas import BatchConfig, MageminConfig, SimConfig
+from meltsapp.schemas import BatchConfig, MageminConfig, SampleEntry, SimConfig
 
 # ---------------------------------------------------------------------------
 # Simulation state
@@ -202,7 +202,7 @@ async def start_magemin_simulation(config: MageminConfig):
         sys.executable, str(MAGEMIN_WORKER_PATH),
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.PIPE,  # capture Julia/JIT errors
         env=env,
     )
     state.process = proc
@@ -211,8 +211,9 @@ async def start_magemin_simulation(config: MageminConfig):
     proc.stdin.write(config_json.encode())
     proc.stdin.close()
 
-    # Launch background task to read stdout
+    # Launch background tasks to read stdout and drain stderr
     asyncio.create_task(_read_worker_output(sim_id))
+    asyncio.create_task(_drain_stderr(sim_id))
 
     return {"sim_id": sim_id}
 
@@ -317,6 +318,27 @@ async def _read_worker_output(sim_id: str) -> None:
             state.status = "done"
 
 
+async def _drain_stderr(sim_id: str) -> None:
+    """Read and log stderr from the worker subprocess (Julia JIT noise, errors)."""
+    import logging
+    logger = logging.getLogger("melts.worker")
+
+    state = SIMULATIONS.get(sim_id)
+    if state is None or state.process is None or state.process.stderr is None:
+        return
+
+    try:
+        while True:
+            line = await state.process.stderr.readline()
+            if not line:
+                break
+            decoded = line.decode().strip()
+            if decoded:
+                logger.debug(f"[{sim_id}] stderr: {decoded[:120]}")
+    except Exception:
+        pass
+
+
 @app.websocket("/api/simulate/{sim_id}/stream")
 async def stream_results(websocket: WebSocket, sim_id: str):
     """WebSocket that streams step results as they arrive from the worker."""
@@ -357,11 +379,19 @@ async def get_results(sim_id: str):
     if sim_id not in SIMULATIONS:
         raise HTTPException(404, detail="Simulation not found")
     state = SIMULATIONS[sim_id]
+    # Find the latest init/progress message text for frontend display
+    latest_init = None
+    for msg in reversed(state.messages):
+        if msg.get("type") in ("init", "liquidus"):
+            latest_init = msg.get("message", "")
+            break
+
     return JSONResponse(content={
         "status": state.status,
         "error": state.error_message,
         "count": len(state.results),
         "results": state.results,
+        "init_message": latest_init,
     })
 
 
@@ -462,38 +492,48 @@ async def download_csv(sim_id: str):
 
 @app.post("/api/batch")
 async def start_batch(batch: BatchConfig):
-    """Start a batch of simulations with parameter sweep."""
+    """Start a batch of simulations with parameter sweep or multi-sample."""
     _cleanup_old_sims()
 
     batch_id = uuid.uuid4().hex[:12]
 
-    # Generate individual configs by applying sweep values
-    configs = []
-    for val in batch.sweep.values:
-        cfg = batch.base_config.model_copy(deep=True)
-        if batch.sweep.param == "H2O":
-            cfg.composition["H2O"] = val
-        elif batch.sweep.param == "pressure":
-            cfg.P_start = val
-            cfg.P_end = val  # isobaric at swept pressure
-        elif batch.sweep.param == "fo2_offset":
-            cfg.fo2_offset = val
-        elif batch.sweep.param == "temperature":
-            cfg.T_start = val
-        configs.append(cfg)
-
-    # Auto-generate labels if not provided
-    LABEL_TEMPLATES = {
-        "H2O": "H\u2082O = {v:.1f} wt%",
-        "pressure": "P = {v:.0f} bar",
-        "fo2_offset": "fO\u2082 offset = {v:+.1f}",
-        "temperature": "T\u2080 = {v:.0f} \u00b0C",
-    }
-    if batch.sweep.labels and len(batch.sweep.labels) == len(batch.sweep.values):
-        labels = batch.sweep.labels
+    if batch.samples is not None:
+        # Multi-sample mode: one SimConfig per sample, composition from Excel
+        configs = []
+        labels = []
+        for sample in batch.samples:
+            cfg = batch.base_config.model_copy(deep=True)
+            cfg.composition = sample.composition
+            configs.append(cfg)
+            labels.append(sample.name)
     else:
-        tpl = LABEL_TEMPLATES.get(batch.sweep.param, "{v}")
-        labels = [tpl.format(v=v) for v in batch.sweep.values]
+        # Parameter sweep mode (existing behavior)
+        configs = []
+        for val in batch.sweep.values:
+            cfg = batch.base_config.model_copy(deep=True)
+            if batch.sweep.param == "H2O":
+                cfg.composition["H2O"] = val
+            elif batch.sweep.param == "pressure":
+                cfg.P_start = val
+                cfg.P_end = val  # isobaric at swept pressure
+            elif batch.sweep.param == "fo2_offset":
+                cfg.fo2_offset = val
+            elif batch.sweep.param == "temperature":
+                cfg.T_start = val
+            configs.append(cfg)
+
+        # Auto-generate labels if not provided
+        LABEL_TEMPLATES = {
+            "H2O": "H\u2082O = {v:.1f} wt%",
+            "pressure": "P = {v:.0f} bar",
+            "fo2_offset": "fO\u2082 offset = {v:+.1f}",
+            "temperature": "T\u2080 = {v:.0f} \u00b0C",
+        }
+        if batch.sweep.labels and len(batch.sweep.labels) == len(batch.sweep.values):
+            labels = batch.sweep.labels
+        else:
+            tpl = LABEL_TEMPLATES.get(batch.sweep.param, "{v}")
+            labels = [tpl.format(v=v) for v in batch.sweep.values]
 
     batch_state = BatchState(
         batch_id=batch_id,
