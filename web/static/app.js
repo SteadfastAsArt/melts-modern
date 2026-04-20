@@ -700,9 +700,16 @@ function updateSweepPreview() {
 // Multi-sample import
 // ---------------------------------------------------------------------------
 
-/** Map of lowercase oxide names to canonical MELTS oxide names. */
+/** Map of lowercase oxide names to canonical MELTS oxide names.
+ *  Includes common aliases for total iron, halogens, etc. */
 const OX_LOWER_MAP = {};
 OX.forEach((ox) => { OX_LOWER_MAP[ox.toLowerCase()] = ox; });
+// Total iron aliases
+["feot", "feo(t)", "feototal", "feotot", "tfeo"].forEach((a) => { OX_LOWER_MAP[a] = "FeO"; });
+["fe2o3t", "fe2o3(t)", "fe2o3total", "fe2o3tot", "tfe2o3"].forEach((a) => { OX_LOWER_MAP[a] = "Fe2O3"; });
+// Halogen aliases
+["cl", "cl2o"].forEach((a) => { OX_LOWER_MAP[a] = "Cl2O-1"; });
+["f", "f2o"].forEach((a) => { OX_LOWER_MAP[a] = "F2O-1"; });
 
 function handleSampleFile(file) {
   const reader = new FileReader();
