@@ -15,7 +15,7 @@ Web-based interactive frontend for rhyolite-MELTS thermodynamic modeling.
   - `app.py` — REST endpoints + WebSocket streaming
   - `worker.py` — subprocess reading SimConfig from stdin, emitting JSON lines to stdout
   - `static/` — vanilla HTML/CSS/JS SPA with Plotly charts
-- **External deps (symlinked):** `alphamelts-app`, `alphamelts-py`, `lib/`
+- **Bundled binaries:** `alphamelts-app/`, `alphamelts-py/`, `lib/` (x86-64 Linux ELF, checked into repo)
 
 ## Key patterns
 
