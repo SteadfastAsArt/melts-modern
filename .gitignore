@@ -11,10 +11,9 @@ results.csv
 # Case outputs
 cases/*/output/
 
-# Symlinked external dependencies (tracked outside this repo)
-alphamelts-app
-alphamelts-py
-lib
+# MELTS binary internals we don't need in git
+alphamelts-app/*/logfile.txt
+alphamelts-py/*/__pycache__
 
 # Node
 node_modules/
@@ -30,3 +29,4 @@ node_modules/
 nohup.out
 .gstack/
 .superpowers/
+melts-modern-deploy.tar.gz
