@@ -92,6 +92,24 @@ git pull
 sudo systemctl restart melts-modern
 ```
 
+### Update MELTS Binaries
+
+When upstream alphamelts releases a new version:
+
+```bash
+# On the machine that has the upstream melts directory
+bash update-melts.sh              # defaults to /home/laz/proj/melts
+# or specify a custom path
+bash update-melts.sh /path/to/melts
+
+# Review and commit
+git add alphamelts-app/ alphamelts-py/ lib/
+git commit -m "chore: update MELTS binaries to X.Y.Z"
+git push
+```
+
+The script copies new binaries into the repo, cleans up caches, and shows a diff summary. After push, CI/CD or a manual `git pull && sudo systemctl restart melts-modern` on each deployed machine picks it up.
+
 ### CI/CD
 
 The deploy script is idempotent — running it again updates the service in place. A minimal GitHub Actions workflow:
