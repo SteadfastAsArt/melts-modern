@@ -204,6 +204,18 @@ npx vitest run             # JS: unit tests for scrubber logic
 - `libalphamelts.so` writes to stdout internally. `MeltsSession.__init__` redirects fd 1 to `/dev/null`; the worker saves the real stdout fd before import.
 - All Plotly figures are built server-side as JSON. The frontend renders with `Plotly.react()` and `responsive: true` (no fixed width in Python).
 
+## Upstream Dependencies
+
+| Dependency | Repository | License | Integrated via |
+|-----------|-----------|---------|---------------|
+| alphaMELTS 2 | [magmasource/alphaMELTS](https://github.com/magmasource/alphaMELTS) | AGPL-3.0 | Pre-compiled binary in repo (`alphamelts-app/`, `alphamelts-py/`) |
+| MAGEMin | [ComputationalThermodynamics/MAGEMin](https://github.com/ComputationalThermodynamics/MAGEMin) | GPL-3.0 | Via Julia package `MAGEMin_C.jl` (pulled by PetThermoTools) |
+| PetThermoTools | [gleesonm1/PetThermoTools](https://github.com/gleesonm1/PetThermoTools) | AGPL-3.0 | PyPI (`requirements-magemin.txt`) |
+
+**Note on MAGEMin version chain:** PetThermoTools 内部硬编码了 Julia 侧的 MAGEMin_C 版本。升级 `petthermotools` 后需要重跑 Julia 环境安装（`deploy.sh` 会自动处理）。
+
 ## License
 
-The MELTS thermodynamic model and binaries are developed by OFM Research. See [melts.ofm-research.org](https://melts.ofm-research.org/) for licensing terms. MAGEMin is developed by Riel et al. This web frontend is for research use.
+This web frontend is for academic research use.
+
+Both alphaMELTS and PetThermoTools are licensed under **AGPL-3.0**, which requires source availability for network services. This project's source is available at [github.com/SteadfastAsArt/melts-modern](https://github.com/SteadfastAsArt/melts-modern). The underlying MELTS thermodynamic engine (xMELTS) is BSD 3-Clause by Mark Ghiorso / OFM Research. MAGEMin is GPL-3.0 by Riel et al.
