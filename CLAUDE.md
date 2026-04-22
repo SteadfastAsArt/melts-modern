@@ -11,11 +11,14 @@ Web-based interactive frontend for rhyolite-MELTS thermodynamic modeling.
   - `presets.py` — 5 named compositions with T/P defaults
   - `plotting/bindplotly.py` — 15 Plotly figure builders, all use `_base_layout()`/`_axis_style()`
   - `plotting/common.py` — TAS boundaries, AFM coords, PHASE_COLORS, derived-column calculator
-- **web/** — FastAPI app, one worker subprocess per simulation (C library is a global singleton)
-  - `app.py` — REST endpoints + WebSocket streaming
-  - `worker.py` — subprocess reading SimConfig from stdin, emitting JSON lines to stdout
+  - `magemin_engine.py` — MAGEMin engine via PetThermoTools/Julia
+- **web/** — FastAPI app, one worker subprocess per simulation
+  - `app.py` — REST endpoints + WebSocket streaming (both rMELTS and MAGEMin routes)
+  - `worker.py` — rMELTS subprocess (C library is a global singleton)
+  - `magemin_worker.py` — MAGEMin subprocess (Julia/PetThermoTools)
   - `static/` — vanilla HTML/CSS/JS SPA with Plotly charts
 - **Bundled binaries:** `alphamelts-app/`, `alphamelts-py/`, `lib/` (x86-64 Linux ELF, checked into repo)
+- **MAGEMin deps (not in repo):** Julia runtime (`~/julia/`), PetThermoTools (pip), Julia depot (`~/.julia/`)
 
 ## Key patterns
 
