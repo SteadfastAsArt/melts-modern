@@ -80,9 +80,16 @@ alphamelts-app/              # Pre-compiled MELTS binary (x86-64 Linux)
 alphamelts-py/               # Python bindings + libalphamelts.so
 lib/                         # Bundled shared libraries (libpng12)
 
-deploy.sh                    # One-click deployment script
+deploy.sh                    # One-click deployment (rMELTS + optional MAGEMin)
 deploy-pack.sh               # Pack tarball for offline transfer
-update-melts.sh              # Sync upstream MELTS binary updates
+update-melts.sh              # Sync upstream rMELTS binary updates
+requirements-magemin.txt     # MAGEMin deps version pin (for upstream tracking)
+
+.github/workflows/
+├── test.yml                 # Push/PR → pytest + vitest
+├── deploy.yml               # Test pass → SSH deploy to server
+└── check-upstream.yml       # Weekly PyPI check → auto PR
+
 tests/                       # pytest + vitest test suites
 ```
 
@@ -116,47 +123,72 @@ git pull
 sudo systemctl restart melts-modern
 ```
 
-### Update MELTS Binaries
+### Upstream Dependencies & Update Flow
 
-When upstream alphamelts releases a new version:
+两个后端的上游更新方式不同：
+
+| 上游 | 分发方式 | 本项目集成 | 更新机制 |
+|------|---------|-----------|---------|
+| **alphamelts** (rMELTS) | 预编译二进制，手动下载 | 二进制直接提交到 git | `update-melts.sh` 手动同步 |
+| **PetThermoTools** (MAGEMin) | PyPI 包 | pip install，版本 pin 在 `requirements-magemin.txt` | GitHub Actions 每周自动检查，有新版开 PR |
+
+**rMELTS 二进制更新：**
 
 ```bash
-bash update-melts.sh              # defaults to /home/laz/proj/melts
-bash update-melts.sh /path/to/melts  # or specify a custom path
+# 在有上游目录的开发机上执行
+bash update-melts.sh                    # 默认 /home/laz/proj/melts
+bash update-melts.sh /path/to/melts     # 或指定路径
 
+# 检查 diff，提交推送
 git add alphamelts-app/ alphamelts-py/ lib/
 git commit -m "chore: update MELTS binaries to X.Y.Z"
 git push
 ```
 
-### CI/CD
+**PetThermoTools 更新：**
 
-The deploy script is idempotent — running it again updates the service in place. A minimal GitHub Actions workflow:
+`check-upstream.yml` 每周一自动检查 PyPI，发现新版会自动开 PR。合并 PR 后走正常的 test → deploy 流程。也可以手动更新：
 
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy
-on:
-  push:
-    branches: [master]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to server
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd ~/proj/melts-modern
-            git pull origin master
-            bash deploy.sh
+```bash
+pip install --upgrade petthermotools
+# 更新 pin 文件
+pip show petthermotools | grep Version  # 查看新版本号
+# 编辑 requirements-magemin.txt 中的版本号
+git add requirements-magemin.txt && git commit -m "chore(deps): update PetThermoTools" && git push
 ```
 
-Set `HOST`, `USER`, `SSH_KEY` in repo Settings → Secrets. Each push to master will SSH in, pull the latest code, and restart the service.
+### CI/CD
+
+三个 GitHub Actions workflow 已配置在 `.github/workflows/`：
+
+```
+git push master
+    │
+    ▼
+┌─────────┐    pass    ┌──────────┐
+│  test   │ ─────────→ │  deploy  │ ─→ SSH 到服务器 git pull + restart
+│ pytest  │            │ ssh-action│
+│ vitest  │    fail    └──────────┘
+└─────────┘ ─→ 阻断，不部署
+
+每周一 16:00 (UTC+8)
+    │
+    ▼
+┌─────────────────┐    有新版    ┌────────────┐
+│ check-upstream  │ ──────────→ │ 自动开 PR  │ ─→ 合并后触发 test → deploy
+│ 查 PyPI 版本    │            └────────────┘
+└─────────────────┘
+```
+
+**启用步骤：** 在 GitHub repo → Settings → Secrets and variables → Actions 中添加：
+
+| Secret | 值 |
+|--------|----|
+| `DEPLOY_HOST` | 目标机器 IP 或域名 |
+| `DEPLOY_USER` | SSH 用户名 |
+| `DEPLOY_SSH_KEY` | SSH 私钥内容 |
+
+多台机器部署时，在 `deploy.yml` 的 `matrix.server` 中扩展，每台机器配对应的 secrets。
 
 ## Testing
 

@@ -1,0 +1,49 @@
+name: Check upstream updates
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"  # 每周一 UTC 8:00 (北京 16:00)
+  workflow_dispatch:       # 也可以手动触发
+
+jobs:
+  check-petthermotools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check PetThermoTools version
+        id: ptt
+        run: |
+          CURRENT=$(pip index versions petthermotools 2>/dev/null | head -1 | grep -oP '\d+\.\d+\.\d+' | head -1 || echo "unknown")
+          PINNED=$(grep -oP 'petthermotools==\K[\d.]+' requirements-magemin.txt 2>/dev/null || echo "none")
+          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
+          echo "pinned=${PINNED}" >> "$GITHUB_OUTPUT"
+          echo "PetThermoTools: PyPI=${CURRENT}, pinned=${PINNED}"
+          if [ "$CURRENT" != "$PINNED" ] && [ "$PINNED" != "none" ]; then
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create PR for PetThermoTools update
+        if: steps.ptt.outputs.needs_update == 'true'
+        run: |
+          NEW_VER="${{ steps.ptt.outputs.current }}"
+          BRANCH="deps/petthermotools-${NEW_VER}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          sed -i "s/petthermotools==.*/petthermotools==${NEW_VER}/" requirements-magemin.txt
+          git add requirements-magemin.txt
+          git commit -m "chore(deps): update PetThermoTools to ${NEW_VER}"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore(deps): update PetThermoTools to ${NEW_VER}" \
+            --body "Automated: PyPI has PetThermoTools ${NEW_VER}. Please test MAGEMin backend before merging." \
+            --base master
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

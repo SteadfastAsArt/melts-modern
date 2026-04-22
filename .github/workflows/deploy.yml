@@ -1,0 +1,31 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    strategy:
+      matrix:
+        server: [main]
+        # 多台机器时扩展:
+        # server: [main, lab-2, lab-3]
+        # 在 secrets 中配对: DEPLOY_HOST_MAIN, DEPLOY_HOST_LAB_2, ...
+
+    steps:
+      - name: Deploy to ${{ matrix.server }}
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd ~/proj/melts-modern
+            git pull origin master
+            sudo systemctl restart melts-modern
