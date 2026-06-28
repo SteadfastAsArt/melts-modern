@@ -111,7 +111,10 @@ tests/                       # pytest + vitest test suites
 
 To run behind nginx with shared `*.astrax.art` SSO (the [geo-auth](https://github.com/) module):
 
-1. Bind to localhost: run `MELTS_HOST=127.0.0.1 bash deploy.sh --skip-magemin`.
+1. Bind it: `MELTS_HOST=127.0.0.1 bash deploy.sh --skip-magemin`. (If the reverse
+   proxy is itself a **Docker** container reaching the host via `host.docker.internal`,
+   it can't see `127.0.0.1` — bind `0.0.0.0` instead and rely on the firewall /
+   cloud security group to keep the port off the public internet.)
 2. Create `.env.prod` (git-ignored, `chmod 600`) next to `deploy.sh`:
    ```
    MELTS_AUTH=1
