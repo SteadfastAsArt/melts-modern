@@ -11,21 +11,31 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
-    strategy:
-      matrix:
-        server: [main]
-        # 多台机器时扩展:
-        # server: [main, lab-2, lab-3]
-        # 在 secrets 中配对: DEPLOY_HOST_MAIN, DEPLOY_HOST_LAB_2, ...
-
     steps:
-      - name: Deploy to ${{ matrix.server }}
+      - name: Deploy to ECS
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 5m
           script: |
-            cd ~/proj/melts-modern
-            git pull origin master
+            set -e
+            cd /opt/melts-modern
+            git pull --ff-only origin master
             sudo systemctl restart melts-modern
+
+            echo "=== Health check ==="
+            for i in $(seq 1 20); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/api/me)
+              if [ "$code" != "000" ]; then
+                echo "melts-modern up after ${i}s (/api/me -> $code)"
+                break
+              fi
+              if [ "$i" -eq 20 ]; then
+                echo "Service did not come up:"
+                sudo journalctl -u melts-modern -n 25 --no-pager
+                exit 1
+              fi
+              sleep 1
+            done
