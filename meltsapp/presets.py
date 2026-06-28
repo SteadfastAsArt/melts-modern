@@ -1,9 +1,8 @@
 """
 Named preset compositions and default simulation parameters.
 
-Each preset is drawn from the demonstration scripts:
-  - ``case_custom/run_python.py`` — High-Mg basalt
-  - ``run_cases.py`` — N-MORB, Wet MORB, Arc Basalt, Bishop Tuff Rhyolite
+Compositions span representative magma types from mafic to silicic systems:
+High-Mg basalt, N-MORB, wet N-MORB, arc basalt, and Bishop Tuff rhyolite.
 """
 from __future__ import annotations
 

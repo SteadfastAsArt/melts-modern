@@ -25,7 +25,6 @@ tar czf "${ARCHIVE}" \
     --exclude='node_modules' \
     --exclude='.git' \
     --exclude='*.pyc' \
-    --exclude='cases/*/output' \
     --exclude='*.log' \
     --exclude='nohup.out' \
     --exclude='.gstack' \
@@ -37,9 +36,10 @@ tar czf "${ARCHIVE}" \
     alphamelts-py/ \
     lib/ \
     tests/ \
-    scripts/ \
     deploy.sh \
     pyproject.toml \
+    requirements-magemin.txt \
+    README.md \
     CLAUDE.md
 
 SIZE=$(du -h "${ARCHIVE}" | cut -f1)

@@ -17,6 +17,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from meltsapp.plotting.bindplotly import (
     _base_layout,
     _axis_style,
+    _path_axis,
+    _tas_ranges,
     fig_tas,
     fig_harker_mgo,
     fig_harker_sio2,
@@ -217,6 +219,52 @@ class TestFigures:
 # ---------------------------------------------------------------------------
 # Tests: empty phase data edge case
 # ---------------------------------------------------------------------------
+class TestTasRanges:
+    """fig_tas must not clip silicic (rhyolite) compositions (was hard-coded [40,72])."""
+
+    def test_classic_window_for_mafic(self, mock_df):
+        # mock_df SiO2 spans 48-55 -> should keep the classic [40, 72] window
+        fig = fig_tas(mock_df)
+        assert tuple(fig.layout.xaxis.range) == (40.0, 72.0)
+
+    def test_range_expands_for_rhyolite(self, mock_df):
+        df = mock_df.copy()
+        df["liq_SiO2"] = np.linspace(74.0, 78.0, len(df))  # rhyolite, exceeds 72
+        fig = fig_tas(df)
+        assert fig.layout.xaxis.range[1] >= 78.0  # data point not clipped
+
+    def test_tas_ranges_helper(self):
+        x_range, y_range = _tas_ranges(pd.Series([76.0, 78.0]), pd.Series([8.0, 9.0]))
+        assert x_range[1] >= 78.0
+        assert y_range[0] == 0.0
+
+
+class TestPathAxis:
+    """Evolution-style figures should follow the varying path variable (T or P)."""
+
+    def test_isobaric_uses_temperature(self, mock_df):
+        # T varies a lot -> temperature axis
+        assert _path_axis(mock_df)[0] == "T_C"
+
+    def test_isothermal_uses_pressure(self):
+        df = pd.DataFrame({"T_C": [1200.0] * 10, "P_bar": np.linspace(5000, 1000, 10)})
+        assert _path_axis(df)[0] == "P_bar"
+
+    def test_fig_evolution_isothermal_uses_pressure(self, mock_df):
+        df = mock_df.copy()
+        df["T_C"] = 1200.0  # constant temperature (isothermal)
+        df["P_bar"] = np.linspace(5000, 1000, len(df))  # decompression
+        fig = fig_evolution(df)
+        assert "Pressure" in fig.layout.xaxis.title.text
+        assert "Decompression" in fig.layout.title.text
+
+    def test_fig_evolution_isobaric_title(self, mock_df):
+        df = mock_df.copy()
+        df["P_bar"] = 2000.0  # constant pressure -> cooling
+        fig = fig_evolution(df)
+        assert "Cooling" in fig.layout.title.text
+
+
 class TestEmptyPhaseData:
     def test_fig_olivine_empty(self):
         """Olivine plot with no olivine data should not crash."""

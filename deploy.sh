@@ -7,6 +7,9 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVICE_NAME="melts-modern"
 PORT=9000
+# Bind address: default 0.0.0.0 (standalone). Set MELTS_HOST=127.0.0.1 when
+# running behind a reverse proxy (e.g. nginx on the astrax.art edge).
+BIND_HOST="${MELTS_HOST:-0.0.0.0}"
 LOG_FILE="/var/log/${SERVICE_NAME}.log"
 JULIA_VERSION="1.11.9"
 JULIA_DIR="${HOME}/julia"
@@ -35,31 +38,44 @@ done
 echo ""
 echo "[2/7] 安装系统依赖..."
 sudo apt-get update -qq
-sudo apt-get install -y -qq libgsl27 libxml2 libz3-dev > /dev/null
-echo "  ✓ libgsl libxml2 libz"
+# zlib1g: runtime dependency of the bundled libpng12 (NOT libz3, the Z3 solver)
+# python3-venv: needed to create an isolated venv on PEP 668 / externally-managed systems
+sudo apt-get install -y -qq libgsl27 libxml2 zlib1g python3-venv > /dev/null
+echo "  ✓ libgsl libxml2 zlib python3-venv"
 
 # ---- 3. Python 环境 ----
 echo ""
 echo "[3/7] 检查 Python 环境..."
 
+# Prefer an existing project venv or conda env. Otherwise create a dedicated
+# venv — installing into the system Python fails on PEP 668 (externally-managed)
+# setups such as Ubuntu 24.04 / Debian 12.
 PYTHON=""
-for p in "${APP_DIR}/venv/bin/python3" "${HOME}/miniconda3/bin/python3" "$(which python3 2>/dev/null)"; do
-    if [ -n "$p" ] && [ -x "$p" ]; then
+for p in "${APP_DIR}/venv/bin/python3" "${HOME}/miniconda3/bin/python3"; do
+    if [ -x "$p" ]; then
         PYTHON="$p"
         break
     fi
 done
 
 if [ -z "$PYTHON" ]; then
-    echo "  ✗ 未找到 python3，请先安装 Python >= 3.10"
-    exit 1
+    SYS_PY="$(command -v python3 || true)"
+    if [ -z "$SYS_PY" ]; then
+        echo "  ✗ 未找到 python3，请先安装 Python >= 3.10"
+        exit 1
+    fi
+    echo "  创建项目专用虚拟环境 (${APP_DIR}/venv)..."
+    "$SYS_PY" -m venv "${APP_DIR}/venv"
+    PYTHON="${APP_DIR}/venv/bin/python3"
+    "$PYTHON" -m pip install --quiet --upgrade pip
 fi
 
 PYVER=$("$PYTHON" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 echo "  Python: ${PYTHON} (${PYVER})"
 
 echo "  安装 Python 依赖..."
-"$PYTHON" -m pip install --quiet fastapi uvicorn pandas plotly pydantic openpyxl
+# python-jose + httpx are needed by the geo-auth SSO module (used when MELTS_AUTH=1)
+"$PYTHON" -m pip install --quiet fastapi uvicorn pandas plotly pydantic openpyxl "python-jose[cryptography]" httpx
 echo "  ✓ rMELTS Python 依赖已就绪"
 
 # ---- 4. Julia + MAGEMin (可选) ----
@@ -112,6 +128,11 @@ if ! $SKIP_MAGEMIN && [ -d "${JULIA_DIR}" ]; then
 Environment=PATH=${JULIA_DIR}/bin:/usr/local/bin:/usr/bin:/bin"
 fi
 
+# Optional production env (auth secrets, MELTS_AUTH, LOGIN_URL, ...) — kept out
+# of git. When present, systemd loads it as an EnvironmentFile.
+ENV_FILE_LINE=""
+[ -f "${APP_DIR}/.env.prod" ] && ENV_FILE_LINE="EnvironmentFile=${APP_DIR}/.env.prod"
+
 sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null << SVCEOF
 [Unit]
 Description=MELTS Modern Web App
@@ -123,7 +144,8 @@ User=$(whoami)
 WorkingDirectory=${APP_DIR}
 Environment=LD_LIBRARY_PATH=${APP_DIR}/lib
 ${EXTRA_ENV}
-ExecStart=${PYTHON} -c "import uvicorn; from web.app import app; uvicorn.run(app, host='0.0.0.0', port=${PORT})"
+${ENV_FILE_LINE}
+ExecStart=${PYTHON} -c "import uvicorn; from web.app import app; uvicorn.run(app, host='${BIND_HOST}', port=${PORT}, proxy_headers=True, forwarded_allow_ips='*')"
 Restart=always
 RestartSec=3
 StandardOutput=append:${LOG_FILE}

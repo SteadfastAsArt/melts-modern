@@ -44,6 +44,23 @@ function computeLiquidPct(currentMass, initialMass) {
   return ((currentMass / initialMass) * 100).toFixed(1);
 }
 
+/**
+ * Find the index of the real data scatter trace for scrubber highlighting.
+ * Boundary/line traces (hoverinfo "skip", no markers) must be ignored — on
+ * TAS/AFM the first trace is a short boundary line, so the bounds check must
+ * use THIS trace's length, not container.data[0].
+ * @param {Array} traces - Plotly trace objects
+ * @returns {number} index of the data scatter trace, or -1
+ */
+function findDataTraceIndex(traces) {
+  for (let t = 0; t < traces.length; t++) {
+    if (traces[t].hoverinfo !== "skip" && traces[t].mode && traces[t].mode.includes("markers")) {
+      return t;
+    }
+  }
+  return -1;
+}
+
 // ---------------------------------------------------------------------------
 // Tests: detectNewPhases
 // ---------------------------------------------------------------------------
@@ -137,5 +154,38 @@ describe("computeLiquidPct", () => {
 
   it("handles near-zero liquid", () => {
     expect(computeLiquidPct(0.1, 100)).toBe("0.1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: findDataTraceIndex (scrubber highlight trace selection)
+// ---------------------------------------------------------------------------
+describe("findDataTraceIndex", () => {
+  // Mimics a TAS figure: first traces are short boundary lines, then data scatter.
+  const tasTraces = [
+    { mode: "lines", hoverinfo: "skip", x: [41, 41] },          // boundary (2 pts)
+    { mode: "lines", hoverinfo: "skip", x: [45, 49] },          // boundary (2 pts)
+    { mode: "markers", x: new Array(20).fill(0), y: new Array(20).fill(0) }, // data (20 pts)
+  ];
+
+  it("skips boundary line traces and finds the data scatter", () => {
+    expect(findDataTraceIndex(tasTraces)).toBe(2);
+  });
+
+  it("selected data trace is long enough to highlight mid-path steps", () => {
+    // Regression: the old code gated on data[0].x.length (=2), skipping highlight
+    // for every step beyond index 1 on TAS/AFM.
+    const idx = findDataTraceIndex(tasTraces);
+    expect(tasTraces[idx].x.length).toBe(20);
+    expect(tasTraces[idx].x[15]).not.toBeUndefined();
+  });
+
+  it("finds the first trace when it is already a marker scatter", () => {
+    const traces = [{ mode: "markers", x: [1, 2, 3] }];
+    expect(findDataTraceIndex(traces)).toBe(0);
+  });
+
+  it("returns -1 when there is no marker trace", () => {
+    expect(findDataTraceIndex([{ mode: "lines", hoverinfo: "skip", x: [1, 2] }])).toBe(-1);
   });
 });

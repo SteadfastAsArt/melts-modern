@@ -97,10 +97,13 @@ def calc_derived(df: pd.DataFrame) -> pd.DataFrame:
 # ------------------------------------------------------------------
 # Phase-appearance detector
 # ------------------------------------------------------------------
-def detect_phase_events(df: pd.DataFrame) -> dict[str, float]:
-    """Scan the ``phases`` column and return {phase_base_name: first T_C}.
+def detect_phase_events(df: pd.DataFrame, xcol: str = "T_C") -> dict[str, float]:
+    """Scan the ``phases`` column and return {phase_base_name: first xcol value}.
 
     Trailing digits are stripped so that e.g. ``olivine1`` becomes ``olivine``.
+    By default the appearance position is reported as temperature (``T_C``); pass
+    ``xcol="P_bar"`` to position events along pressure (used for isothermal paths
+    where temperature is constant).
     """
     phase_events: dict[str, float] = {}
     for _, row in df.iterrows():
@@ -109,7 +112,7 @@ def detect_phase_events(df: pd.DataFrame) -> dict[str, float]:
         for p in str(row["phases"]).split("+"):
             base = p.rstrip("0123456789")
             if base and base not in phase_events:
-                phase_events[base] = row["T_C"]
+                phase_events[base] = row[xcol]
     return phase_events
 
 

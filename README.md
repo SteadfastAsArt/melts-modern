@@ -67,7 +67,7 @@ meltsapp/                    # Python package
     └── common.py            # TAS boundaries, AFM coords, phase colors
 
 web/                         # FastAPI application
-├── app.py                   # REST + WebSocket endpoints (both backends)
+├── app.py                   # REST endpoints + result polling (both backends)
 ├── worker.py                # rMELTS subprocess worker
 ├── magemin_worker.py        # MAGEMin subprocess worker
 └── static/
@@ -106,6 +106,24 @@ tests/                       # pytest + vitest test suites
 | 5 | Create systemd service (`melts-modern.service`) |
 | 6 | Configure log rotation (`/var/log/melts-modern.log`) |
 | 7 | Enable, start, and verify the service |
+
+### Reverse proxy + SSO (optional)
+
+To run behind nginx with shared `*.astrax.art` SSO (the [geo-auth](https://github.com/) module):
+
+1. Bind to localhost: run `MELTS_HOST=127.0.0.1 bash deploy.sh --skip-magemin`.
+2. Create `.env.prod` (git-ignored, `chmod 600`) next to `deploy.sh`:
+   ```
+   MELTS_AUTH=1
+   GEO_AUTH_PATH=/opt/geo-auth          # where the geo_auth module lives
+   JWT_SECRET=<shared secret, must match the astrax portal>
+   LOGIN_URL=https://astrax.art/login
+   AUTH_API_URL=http://127.0.0.1:8900
+   ```
+   `deploy.sh` wires it in as a systemd `EnvironmentFile`. When `MELTS_AUTH` is
+   unset (local dev / tests), the app runs open with no auth.
+3. Add an nginx vhost (`melts.astrax.art` → `127.0.0.1:9000`) with TLS, forwarding
+   `X-Forwarded-Proto` so the SSO cookie is marked `Secure`.
 
 ### Service Management
 

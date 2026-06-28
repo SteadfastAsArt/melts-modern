@@ -73,6 +73,51 @@ def _ensure_derived(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _path_axis(df: pd.DataFrame) -> tuple[str, str, str, str]:
+    """Pick the x-axis variable for "evolution vs path" figures.
+
+    Most paths are isobaric cooling, so temperature is the natural x-axis. But
+    isothermal decompression holds T constant — plotting against T collapses
+    every step onto one vertical line. In that case we fall back to pressure.
+
+    Returns ``(xcol, x_title, x_symbol, x_unit)``.
+    """
+    t_span = float(df["T_C"].max() - df["T_C"].min()) if "T_C" in df.columns and len(df) else 0.0
+    p_span = float(df["P_bar"].max() - df["P_bar"].min()) if "P_bar" in df.columns and len(df) else 0.0
+    if t_span < 5.0 and p_span > 50.0:
+        return "P_bar", "Pressure (bar)", "P", " bar"
+    return "T_C", "Temperature (°C)", "T", "°C"
+
+
+def _path_title(df: pd.DataFrame) -> str:
+    """Describe the crystallization path for figure titles (cooling vs decompression)."""
+    t_span = float(df["T_C"].max() - df["T_C"].min()) if "T_C" in df.columns and len(df) else 0.0
+    p_span = float(df["P_bar"].max() - df["P_bar"].min()) if "P_bar" in df.columns and len(df) else 0.0
+    cooling = t_span >= 5.0
+    decompressing = p_span >= 50.0
+    if cooling and decompressing:
+        return "Cooling + Decompression"
+    if decompressing and not cooling:
+        return "Decompression"
+    return "Cooling"
+
+
+def _tas_ranges(sio2: pd.Series, alk: pd.Series) -> tuple[list[float], list[float]]:
+    """Compute TAS axis ranges that keep the classic window but never clip data.
+
+    The default [40, 72] / [0, 10] window suits mafic-to-intermediate melts, but
+    silicic liquids (e.g. rhyolite at SiO2 > 77) would fall off the chart. Expand
+    the window to fit the data when it exceeds the classic bounds.
+    """
+    if len(sio2):
+        x_lo = min(40.0, float(sio2.min()) - 2.0)
+        x_hi = max(72.0, float(sio2.max()) + 2.0)
+    else:
+        x_lo, x_hi = 40.0, 72.0
+    y_hi = max(10.0, float(alk.max()) + 1.0) if len(alk) else 10.0
+    return [x_lo, x_hi], [0.0, y_hi]
+
+
 # ===================================================================
 # P0  --  Core figures
 # ===================================================================
@@ -177,10 +222,11 @@ def fig_tas(df: pd.DataFrame) -> go.Figure:
         font=dict(size=8, color="darkred"),
     )
 
+    x_range, y_range = _tas_ranges(df["liq_SiO2"], df["Na2O_K2O"])
     fig.update_layout(
         **_base_layout(title="TAS Classification (Le Maitre 2002) \u2014 Liquid Evolution Path"),
-        xaxis=dict(title="SiO\u2082 (wt%)", range=[40, 72], **_axis_style()),
-        yaxis=dict(title="Na\u2082O + K\u2082O (wt%)", range=[0, 10], **_axis_style()),
+        xaxis=dict(title="SiO\u2082 (wt%)", range=x_range, **_axis_style()),
+        yaxis=dict(title="Na\u2082O + K\u2082O (wt%)", range=y_range, **_axis_style()),
     )
     return fig
 
@@ -492,10 +538,15 @@ def fig_afm(df: pd.DataFrame) -> go.Figure:
 
 # -------------------------------------------------------------------
 def fig_evolution(df: pd.DataFrame) -> go.Figure:
-    """2x3 multi-panel magma evolution vs temperature."""
+    """2x3 multi-panel magma evolution along the crystallization path.
+
+    The x-axis follows whichever of temperature / pressure actually varies, so
+    isothermal decompression paths don't collapse onto a single temperature.
+    """
     df = _ensure_derived(df)
     df = df[df["mass_liquid_g"] > 0.01].copy()
-    phase_events = detect_phase_events(df)
+    xcol, x_title, xsym, xunit = _path_axis(df)
+    phase_events = detect_phase_events(df, xcol)
 
     fig = make_subplots(
         rows=2,
@@ -516,7 +567,7 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
         ],
     )
 
-    T = df["T_C"]
+    T = df[xcol]
 
     # Panel (1,1): liquid fraction
     fig.add_trace(
@@ -525,7 +576,7 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
             line=dict(color="black", width=_LINE_WIDTH_DATA),
             fill="tozeroy", fillcolor="rgba(70,130,180,0.15)",
             showlegend=False,
-            hovertemplate="T=%{x:.0f}\u00b0C<br>Liq=%{y:.1f}%<extra></extra>",
+            hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>Liq=%{{y:.1f}}%<extra></extra>",
         ),
         row=1, col=1,
     )
@@ -537,7 +588,7 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
             x=T, y=df["liq_SiO2"], mode="lines",
             line=dict(color="#d62728", width=_LINE_WIDTH_DATA),
             showlegend=False,
-            hovertemplate="T=%{x:.0f}\u00b0C<br>SiO2=%{y:.1f}%<extra></extra>",
+            hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>SiO2=%{{y:.1f}}%<extra></extra>",
         ),
         row=1, col=2,
     )
@@ -559,7 +610,7 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
             x=T, y=df["Mg_number"], mode="lines",
             line=dict(color="#2ca02c", width=_LINE_WIDTH_DATA),
             showlegend=False,
-            hovertemplate="T=%{x:.0f}\u00b0C<br>Mg#=%{y:.1f}<extra></extra>",
+            hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>Mg#=%{{y:.1f}}<extra></extra>",
         ),
         row=1, col=3,
     )
@@ -576,7 +627,7 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
                 line=dict(color=color, width=_LINE_WIDTH_DATA),
                 showlegend=True,
                 legendgroup="panel4",
-                hovertemplate="T=%{x:.0f}\u00b0C<br>" + label + "=%{y:.2f}%<extra></extra>",
+                hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>" + label + "=%{y:.2f}%<extra></extra>",
             ),
             row=2, col=1,
         )
@@ -594,7 +645,7 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
                 line=dict(color=color, width=_LINE_WIDTH_DATA),
                 showlegend=True,
                 legendgroup="panel5",
-                hovertemplate="T=%{x:.0f}\u00b0C<br>" + label + "=%{y:.2f}%<extra></extra>",
+                hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>" + label + "=%{y:.2f}%<extra></extra>",
             ),
             row=2, col=2,
         )
@@ -607,7 +658,7 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
             line=dict(color="#1f77b4", width=_LINE_WIDTH_DATA),
             showlegend=True,
             legendgroup="panel6",
-            hovertemplate="T=%{x:.0f}\u00b0C<br>H2O=%{y:.2f}%<extra></extra>",
+            hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>H2O=%{{y:.2f}}%<extra></extra>",
         ),
         row=2, col=3, secondary_y=False,
     )
@@ -617,7 +668,7 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
             line=dict(color="grey", width=1, dash="dash"),
             showlegend=True,
             legendgroup="panel6",
-            hovertemplate="T=%{x:.0f}\u00b0C<br>logfO2=%{y:.2f}<extra></extra>",
+            hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>logfO2=%{{y:.2f}}<extra></extra>",
         ),
         row=2, col=3, secondary_y=True,
     )
@@ -628,7 +679,7 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
     for r in range(1, 3):
         for c in range(1, 4):
             fig.update_xaxes(
-                title_text="Temperature (\u00b0C)", autorange="reversed",
+                title_text=x_title, autorange="reversed",
                 row=r, col=c, **_axis_style(),
             )
 
@@ -650,7 +701,7 @@ def fig_evolution(df: pd.DataFrame) -> go.Figure:
 
     fig.update_layout(
         **_base_layout(
-            title="Magma Evolution During Decompression Crystallization",
+            title=f"Magma Evolution During {_path_title(df)} Crystallization",
             height=650,
         ),
         legend=dict(font=dict(size=8)),
@@ -674,12 +725,15 @@ def fig_phase_masses(df: pd.DataFrame, phase_data: pd.DataFrame) -> go.Figure:
         Long-form table with columns: step, T_C, phase, mass.
     """
     df = _ensure_derived(df)
+    xcol, x_title, xsym, xunit = _path_axis(df)
+    # phase_data may lack P_bar (older callers / tests) — fall back to temperature
+    group_col = xcol if xcol in phase_data.columns else "T_C"
 
     # Pivot phase_data to wide form
     phase_data = phase_data.copy()
     phase_data["phase_base"] = phase_data["phase"].str.rstrip("0123456789")
     wide = (
-        phase_data.groupby(["T_C", "phase_base"])["mass"]
+        phase_data.groupby([group_col, "phase_base"])["mass"]
         .sum()
         .unstack(fill_value=0)
         .sort_index(ascending=False)
@@ -710,25 +764,25 @@ def fig_phase_masses(df: pd.DataFrame, phase_data: pd.DataFrame) -> go.Figure:
                 fillcolor=color.replace(")", ",0.7)").replace("rgb", "rgba")
                 if color.startswith("rgb")
                 else color,
-                hovertemplate=f"{phase}<br>T=%{{x:.0f}}\u00b0C<br>Mass=%{{y:.2f}} g<extra></extra>",
+                hovertemplate=f"{phase}<br>{xsym}=%{{x:.0f}}{xunit}<br>Mass=%{{y:.2f}} g<extra></extra>",
             )
         )
 
     # Liquid mass overlay
     fig.add_trace(
         go.Scatter(
-            x=df["T_C"],
+            x=df[xcol],
             y=df["mass_liquid_g"],
             mode="lines",
             name="liquid",
             line=dict(color="black", width=2.5),
-            hovertemplate="Liquid<br>T=%{x:.0f}\u00b0C<br>Mass=%{y:.2f} g<extra></extra>",
+            hovertemplate=f"Liquid<br>{xsym}=%{{x:.0f}}{xunit}<br>Mass=%{{y:.2f}} g<extra></extra>",
         )
     )
 
     fig.update_layout(
         **_base_layout(title="Phase Masses During Crystallization"),
-        xaxis=dict(title="Temperature (\u00b0C)", autorange="reversed", **_axis_style()),
+        xaxis=dict(title=x_title, autorange="reversed", **_axis_style()),
         yaxis=dict(title="Mass (g)", **_axis_style()),
         legend=dict(x=0.01, y=0.99, font=dict(size=8)),
     )
@@ -737,9 +791,11 @@ def fig_phase_masses(df: pd.DataFrame, phase_data: pd.DataFrame) -> go.Figure:
 
 # -------------------------------------------------------------------
 def fig_liquid_vs_temp(df: pd.DataFrame) -> go.Figure:
-    """2x4 liquid composition vs temperature."""
+    """2x4 liquid composition vs temperature (or pressure for isothermal paths)."""
     df = _ensure_derived(df)
     df = df[df["mass_liquid_g"] > 0.01].copy()
+    xcol, x_title, xsym, xunit = _path_axis(df)
+    x_short = "T (\u00b0C)" if xcol == "T_C" else "P (bar)"
 
     oxides = [
         ("liq_SiO2", "SiO\u2082", "#d62728"),
@@ -760,38 +816,38 @@ def fig_liquid_vs_temp(df: pd.DataFrame) -> go.Figure:
         vertical_spacing=0.12,
     )
 
-    phase_events = detect_phase_events(df)
+    phase_events = detect_phase_events(df, xcol)
 
     for idx, (col, label, color) in enumerate(oxides):
         r = idx // 4 + 1
         c = idx % 4 + 1
         fig.add_trace(
             go.Scatter(
-                x=df["T_C"],
+                x=df[xcol],
                 y=df[col],
                 mode="lines",
                 line=dict(color=color, width=_LINE_WIDTH_DATA),
                 showlegend=False,
-                hovertemplate=f"T=%{{x:.0f}}\u00b0C<br>{label}=%{{y:.2f}} wt%<extra></extra>",
+                hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>{label}=%{{y:.2f}} wt%<extra></extra>",
             ),
             row=r,
             col=c,
         )
         fig.update_xaxes(
-            title_text="T (\u00b0C)", autorange="reversed", row=r, col=c, **_axis_style(),
+            title_text=x_short, autorange="reversed", row=r, col=c, **_axis_style(),
         )
         fig.update_yaxes(title_text=f"{label} (wt%)", row=r, col=c, **_axis_style())
 
         # Phase vlines
-        for phase, T_app in phase_events.items():
+        for phase, x_app in phase_events.items():
             fig.add_vline(
-                x=T_app, line_dash="dot", line_color="grey",
+                x=x_app, line_dash="dot", line_color="grey",
                 line_width=0.4, opacity=0.5, row=r, col=c,
             )
 
     fig.update_layout(
         **_base_layout(
-            title="Liquid Composition vs Temperature",
+            title=f"Liquid Composition vs {'Temperature' if xcol == 'T_C' else 'Pressure'}",
             height=600,
         )
     )
@@ -810,6 +866,11 @@ def fig_system_thermo(df_sys: pd.DataFrame) -> go.Figure:
     """
     # Determine column names -- handle both naming conventions
     T_col = "Temperature" if "Temperature" in df_sys.columns else "T_C"
+    # Follow the varying path variable (pressure for isothermal) when available
+    if "T_C" in df_sys.columns and "P_bar" in df_sys.columns:
+        xcol, x_title, xsym, xunit = _path_axis(df_sys)
+    else:
+        xcol, x_title, xsym, xunit = T_col, "Temperature (°C)", "T", "°C"
     fo2_col = "fO2(abs)" if "fO2(abs)" in df_sys.columns else "logfO2"
     H_col = "H" if "H" in df_sys.columns else "H_total"
     S_col = "S" if "S" in df_sys.columns else "S_total"
@@ -841,18 +902,18 @@ def fig_system_thermo(df_sys: pd.DataFrame) -> go.Figure:
         y_title = f"{label} ({unit})" if unit else label
         fig.add_trace(
             go.Scatter(
-                x=df_sys[T_col],
+                x=df_sys[xcol],
                 y=df_sys[col],
                 mode="lines",
                 line=dict(color="black", width=1.2),
                 showlegend=False,
-                hovertemplate=f"T=%{{x:.0f}}\u00b0C<br>{label}=%{{y:.4g}}<extra></extra>",
+                hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>{label}=%{{y:.4g}}<extra></extra>",
             ),
             row=r,
             col=c,
         )
         fig.update_xaxes(
-            title_text="Temperature (\u00b0C)", autorange="reversed",
+            title_text=x_title, autorange="reversed",
             row=r, col=c, **_axis_style(),
         )
         fig.update_yaxes(title_text=y_title, row=r, col=c, **_axis_style())
@@ -876,6 +937,10 @@ def fig_density(df_sys: pd.DataFrame) -> go.Figure:
         Must contain columns for temperature, rho_liq, and rho_sol.
     """
     T_col = "Temperature" if "Temperature" in df_sys.columns else "T_C"
+    if "T_C" in df_sys.columns and "P_bar" in df_sys.columns:
+        xcol, x_title, xsym, xunit = _path_axis(df_sys)
+    else:
+        xcol, x_title, xsym, xunit = T_col, "Temperature (\u00b0C)", "T", "\u00b0C"
     rho_liq_col = "rho_liq"
     rho_sol_col = "rho_sol"
 
@@ -885,12 +950,12 @@ def fig_density(df_sys: pd.DataFrame) -> go.Figure:
     if rho_liq_col in df_sys.columns:
         fig.add_trace(
             go.Scatter(
-                x=df_sys[T_col],
+                x=df_sys[xcol],
                 y=df_sys[rho_liq_col],
                 mode="lines",
                 name="Liquid",
                 line=dict(color="#d62728", width=_LINE_WIDTH_DATA),
-                hovertemplate="T=%{x:.0f}\u00b0C<br>\u03c1_liq=%{y:.4f} g/cm\u00b3<extra></extra>",
+                hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>\u03c1_liq=%{{y:.4f}} g/cm\u00b3<extra></extra>",
             )
         )
 
@@ -899,18 +964,18 @@ def fig_density(df_sys: pd.DataFrame) -> go.Figure:
         mask = df_sys[rho_sol_col] > 0.1
         fig.add_trace(
             go.Scatter(
-                x=df_sys.loc[mask, T_col],
+                x=df_sys.loc[mask, xcol],
                 y=df_sys.loc[mask, rho_sol_col],
                 mode="lines",
                 name="Solid (bulk)",
                 line=dict(color="#2ca02c", width=_LINE_WIDTH_DATA),
-                hovertemplate="T=%{x:.0f}\u00b0C<br>\u03c1_sol=%{y:.4f} g/cm\u00b3<extra></extra>",
+                hovertemplate=f"{xsym}=%{{x:.0f}}{xunit}<br>\u03c1_sol=%{{y:.4f}} g/cm\u00b3<extra></extra>",
             )
         )
 
     fig.update_layout(
         **_base_layout(title="Melt and Solid Density"),
-        xaxis=dict(title="Temperature (\u00b0C)", autorange="reversed", **_axis_style()),
+        xaxis=dict(title=x_title, autorange="reversed", **_axis_style()),
         yaxis=dict(title="Density (g/cm\u00b3)", **_axis_style()),
         legend=dict(x=0.02, y=0.98),
     )
@@ -1317,10 +1382,16 @@ def fig_tas_compare(datasets: list[dict]) -> go.Figure:
             )
         )
 
+    if datasets:
+        all_si = pd.concat([_ensure_derived(ds["df"])["liq_SiO2"] for ds in datasets])
+        all_alk = pd.concat([_ensure_derived(ds["df"])["Na2O_K2O"] for ds in datasets])
+    else:
+        all_si = all_alk = pd.Series([], dtype=float)
+    x_range, y_range = _tas_ranges(all_si, all_alk)
     fig.update_layout(
         **_base_layout(title="TAS Classification \u2014 Parameter Sweep Comparison"),
-        xaxis=dict(title="SiO\u2082 (wt%)", range=[40, 72], **_axis_style()),
-        yaxis=dict(title="Na\u2082O + K\u2082O (wt%)", range=[0, 10], **_axis_style()),
+        xaxis=dict(title="SiO\u2082 (wt%)", range=x_range, **_axis_style()),
+        yaxis=dict(title="Na\u2082O + K\u2082O (wt%)", range=y_range, **_axis_style()),
         legend=dict(x=0.01, y=0.99, font=dict(size=9)),
     )
     return fig

@@ -24,6 +24,11 @@ node_modules/
 *.swo
 *~
 
+# Secrets / production env (auth secrets injected via systemd EnvironmentFile)
+.env
+.env.prod
+.env.*
+
 # Logs
 *.log
 nohup.out

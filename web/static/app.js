@@ -1,7 +1,7 @@
 /**
  * MELTS Modern — Frontend logic
  *
- * Handles form population, simulation execution via REST + WebSocket,
+ * Handles form population, simulation execution via REST + result polling,
  * Plotly plot fetching / rendering, tab switching, and data table display.
  */
 
@@ -681,6 +681,28 @@ function switchEngine(engine) {
 
   // Rebuild composition table for the selected engine
   buildCompTable();
+
+  // MAGEMin runs a single composition only — the batch endpoints (parameter
+  // sweep / Excel import) are MELTS-only, so don't let them silently degrade.
+  if (engine === "magemin") {
+    batchMode = false;
+    batchType = "sweep";
+    $batchToggle.checked = false;
+    $batchToggle.disabled = true;
+    $batchConfig.classList.add("hidden");
+    $batchFieldset.classList.add("hidden");
+    $batchTypeToggle.classList.add("hidden");
+    $batchSweepConfig.classList.remove("hidden");
+    $batchSamplesConfig.classList.add("hidden");
+    $batchTypeToggle.querySelectorAll(".batch-type-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.batchType === "sweep");
+    });
+    updateRunButtonLabel();
+  } else {
+    $batchToggle.disabled = false;
+    $batchFieldset.classList.remove("hidden");
+    $batchTypeToggle.classList.remove("hidden");
+  }
 }
 
 function onMageminModelChange() {
@@ -1170,22 +1192,6 @@ function pollSimulation(simId, config) {
   }, 1000); // poll every 1 second
 }
 
-async function checkSimStatus(simId) {
-  try {
-    const resp = await fetch(`/api/simulate/${simId}/results`);
-    const data = await resp.json();
-    if (data.status === "done") {
-      simResults = data.results;
-      onSimulationComplete(simId);
-    } else if (data.status === "error") {
-      showError(`Simulation error: ${data.error}`);
-      resetRunButton();
-    }
-  } catch (e) {
-    // Ignore — we already showed the WebSocket error
-  }
-}
-
 function onSimulationComplete(simId) {
   // Show scrubber and reset
   stopAnimation(); // clear any stale animation from previous sim
@@ -1200,6 +1206,7 @@ function onSimulationComplete(simId) {
   simRunning = false;
   $progressBar.style.width = "100%";
   $progressInfo.textContent = `Done. ${simResults.length} steps computed.`;
+  $btnCsv.classList.remove("hidden");  // single-sim CSV uses currentSimId
   resetRunButton();
 
   // Fetch plots for the currently active tab
@@ -1334,6 +1341,10 @@ function onBatchComplete(batchId, batchData) {
   currentBatchId = batchId;
   currentSimId = null;
   batchResultMode = "compare";
+
+  // Main CSV button is single-sim only (currentSimId is null in compare mode);
+  // per-sample download lives in the individual-sample selector instead.
+  $btnCsv.classList.add("hidden");
 
   // Store runs data for individual view
   batchRunsData = {
@@ -1661,16 +1672,11 @@ function updateScrubberHighlight(index) {
       if (prevTraceIdx !== undefined && container.data.length > prevTraceIdx) {
         try { Plotly.deleteTraces(container, prevTraceIdx); } catch(e) {}
       }
-      // Find the data point at this index from the first data trace
-      // For scatter plots, the data arrays correspond 1:1 to simResults indices
-      const firstTrace = container.data[0];
-      if (!firstTrace || !firstTrace.x || index >= firstTrace.x.length) {
-        highlightTraces.delete(divId);
-        continue;
-      }
-
-      // Determine x and y values for the highlight point
-      // Skip boundary line traces (they have hoverinfo: "skip")
+      // Find the actual data scatter trace. We must bound-check against THIS
+      // trace's length, not container.data[0] — on TAS/AFM the first trace is a
+      // short boundary line (2-4 points), which previously caused the highlight
+      // to be skipped for every step beyond index 1.
+      // Skip boundary line traces (they have hoverinfo: "skip").
       let dataTraceIdx = -1;
       for (let t = 0; t < container.data.length; t++) {
         if (container.data[t].hoverinfo !== "skip" && container.data[t].mode && container.data[t].mode.includes("markers")) {
@@ -1683,6 +1689,8 @@ function updateScrubberHighlight(index) {
         continue;
       }
 
+      // Scatter data arrays correspond 1:1 to simResults indices (server filters
+      // only trailing near-solidus steps, so leading indices stay aligned).
       const dataTrace = container.data[dataTraceIdx];
       const xVal = dataTrace.x[index];
       const yVal = dataTrace.y[index];

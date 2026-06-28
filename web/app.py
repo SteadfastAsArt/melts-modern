@@ -3,8 +3,8 @@
 FastAPI application for MELTS thermodynamic modeling.
 
 Spawns worker.py subprocesses for each simulation (the C library is a global
-singleton, so one process per run), streams results over WebSocket, and
-serves Plotly figure JSON from meltsapp.plotting.bindplotly.
+singleton, so one process per run), exposes accumulated results over a polled
+REST endpoint, and serves Plotly figure JSON from meltsapp.plotting.bindplotly.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -78,10 +78,41 @@ BATCHES: dict[str, BatchState] = {}
 # ---------------------------------------------------------------------------
 app = FastAPI(title="MELTS Modern", version="1.0.0")
 
+
+def _install_auth(app) -> bool:
+    """Optionally gate the whole app behind astrax SSO via the shared geo-auth module.
+
+    Enabled only when env ``MELTS_AUTH`` is truthy (set in the systemd unit on
+    the server). Local development and `pytest` run open when it is unset, so
+    nothing changes for a laptop run. Installed *before* CORS so CORS wraps it.
+
+    Required env when enabled: ``JWT_SECRET`` (shared with the astrax portal),
+    ``LOGIN_URL`` (astrax login page); optional ``AUTH_API_URL``, ``GEO_AUTH_PATH``.
+    """
+    if os.getenv("MELTS_AUTH", "").lower() not in ("1", "true", "yes"):
+        return False
+    try:
+        from geo_auth import GeoAuth
+    except ImportError:
+        # geo-auth may live as a sibling project dir rather than a pip install
+        ga_path = os.getenv("GEO_AUTH_PATH", "/home/laz/proj/geo-auth")
+        if os.path.isdir(ga_path) and ga_path not in sys.path:
+            sys.path.insert(0, ga_path)
+        from geo_auth import GeoAuth  # re-raise if truly missing: never run open when auth is requested
+    GeoAuth(
+        jwt_secret=os.getenv("JWT_SECRET"),
+        login_url=os.getenv("LOGIN_URL"),
+        auth_api_url=os.getenv("AUTH_API_URL"),
+    ).install(app, public_prefixes=("/static/",))
+    return True
+
+
+AUTH_ENABLED = _install_auth(app)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # wildcard origin + credentials is rejected by browsers; SSO uses same-origin cookies
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -131,8 +162,9 @@ def _results_to_phase_data(results: list[dict[str, Any]]) -> pd.DataFrame:
             continue
         step = res["step"]
         T_C = res["T_C"]
+        P_bar = res.get("P_bar", 0.0)
         for pd_ in phase_details:
-            row = {"step": step, "T_C": T_C}
+            row = {"step": step, "T_C": T_C, "P_bar": P_bar}
             row["phase"] = pd_["phase"]
             row["mass"] = pd_["mass"]
             for ox in OX:
@@ -335,40 +367,6 @@ async def _drain_stderr(sim_id: str) -> None:
             decoded = line.decode().strip()
             if decoded:
                 logger.debug(f"[{sim_id}] stderr: {decoded[:120]}")
-    except Exception:
-        pass
-
-
-@app.websocket("/api/simulate/{sim_id}/stream")
-async def stream_results(websocket: WebSocket, sim_id: str):
-    """WebSocket that streams step results as they arrive from the worker."""
-    if sim_id not in SIMULATIONS:
-        await websocket.close(code=4004)
-        return
-
-    await websocket.accept()
-    state = SIMULATIONS[sim_id]
-    sent = 0
-
-    try:
-        while True:
-            # Send any new messages we haven't sent yet (init, step, done, error)
-            while sent < len(state.messages):
-                await websocket.send_json(state.messages[sent])
-                sent += 1
-
-            # Check if done
-            if state.status in ("done", "error"):
-                # Drain remaining
-                while sent < len(state.messages):
-                    await websocket.send_json(state.messages[sent])
-                    sent += 1
-                break
-
-            await asyncio.sleep(0.05)
-
-    except WebSocketDisconnect:
-        pass
     except Exception:
         pass
 
@@ -580,7 +578,9 @@ async def _run_batch_sequence(batch_id: str):
         # Wait for this run to complete before starting the next
         await _read_worker_output(sim_id)
 
-    batch.status = "done"
+    # If every run failed, surface the batch as errored rather than "done"
+    statuses = [SIMULATIONS[sid].status for sid in batch.sim_ids if sid in SIMULATIONS]
+    batch.status = "error" if statuses and all(s == "error" for s in statuses) else "done"
 
 
 @app.get("/api/batch/{batch_id}/status")
