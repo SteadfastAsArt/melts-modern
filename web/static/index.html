@@ -267,6 +267,24 @@
           <span class="btn-run-spinner hidden"></span>
         </button>
       </form>
+
+      <!-- Account — shared astrax.art SSO login state -->
+      <div class="account hidden" id="account">
+        <div class="account-avatar" id="account-avatar" aria-hidden="true"></div>
+        <div class="account-meta">
+          <span class="account-name" id="account-name"></span>
+          <span class="account-role" id="account-role"></span>
+        </div>
+        <button type="button" class="account-signout hidden" id="account-signout"
+                title="Sign out of all astrax.art apps" aria-label="Sign out">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </button>
+      </div>
     </aside>
 
     <!-- ================= MAIN CONTENT ================= -->

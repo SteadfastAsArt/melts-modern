@@ -21,9 +21,14 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 
 # ---------------------------------------------------------------------------
@@ -103,7 +108,7 @@ def _install_auth(app) -> bool:
         jwt_secret=os.getenv("JWT_SECRET"),
         login_url=os.getenv("LOGIN_URL"),
         auth_api_url=os.getenv("AUTH_API_URL"),
-    ).install(app, public_prefixes=("/static/",))
+    ).install(app, public_prefixes=("/static/",), public_paths=("/auth/logout",))
     return True
 
 
@@ -183,6 +188,73 @@ def _results_to_phase_data(results: list[dict[str, Any]]) -> pd.DataFrame:
 async def get_presets():
     """Return all preset compositions and their defaults."""
     return JSONResponse(content=PRESETS)
+
+
+def _forwarded_token(request: Request) -> str | None:
+    """Pull the access token from the Authorization header or the cookie."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    return request.cookies.get("access_token")
+
+
+@app.get("/api/me")
+async def get_me(request: Request):
+    """Return the signed-in user, proxied from the astrax auth API.
+
+    Auth-gated like everything else under ``/api/`` — only reached when the
+    request carries a valid session. With auth disabled (local dev) it returns
+    a placeholder so the account UI still renders.
+    """
+    auth_api = os.getenv("AUTH_API_URL")
+    if not AUTH_ENABLED or not auth_api:
+        return JSONResponse(content={"username": "local", "role": "dev", "authenticated": False})
+
+    token = _forwarded_token(request)
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=8, trust_env=False) as client:
+            resp = await client.get(
+                f"{auth_api}/api/auth/me",
+                headers={"Authorization": f"Bearer {token}"} if token else {},
+            )
+        data = resp.json() if resp.content else {}
+        if isinstance(data, dict):
+            data.setdefault("authenticated", resp.status_code == 200)
+        return JSONResponse(content=data, status_code=resp.status_code)
+    except Exception as e:
+        return JSONResponse(content={"error": f"auth service unavailable: {e}"}, status_code=502)
+
+
+@app.get("/auth/logout")
+async def melts_logout(request: Request):
+    """Sign the user out of the whole ``.astrax.art`` SSO session.
+
+    melts.astrax.art is a subdomain of the cookie's domain, so it can clear the
+    shared ``access_token`` cookie itself. We also call the astrax portal
+    server-side (no browser CORS needed) so the token is blacklisted, then bounce
+    to /login which re-enters the SSO flow.
+    """
+    auth_api = os.getenv("AUTH_API_URL")
+    token = _forwarded_token(request)
+    if AUTH_ENABLED and auth_api and token:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
+                await client.post(
+                    f"{auth_api}/api/auth/logout",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+        except Exception:
+            pass  # best-effort blacklist; the cookie clear below is what logs them out
+
+    resp = RedirectResponse(url="/login", status_code=302)
+    cookie_domain = os.getenv("COOKIE_DOMAIN")
+    if cookie_domain:
+        # Clear the shared cross-subdomain cookie (allowed: we're a .astrax.art subdomain)
+        resp.delete_cookie("access_token", path="/", domain=cookie_domain)
+    resp.delete_cookie("access_token", path="/")  # also any host-scoped cookie
+    return resp
 
 
 @app.post("/api/simulate")

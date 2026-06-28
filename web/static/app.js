@@ -304,6 +304,8 @@ document.addEventListener("DOMContentLoaded", () => {
   loadPresets();
   bindEvents();
   onPathModeChange();  // set initial field visibility for default mode
+  initAuthChannel();
+  loadAccount();
 });
 
 function buildCompTable() {
@@ -1955,4 +1957,66 @@ function onTogglePhases() {
   $togglePhases.textContent = phasePanelVisible
     ? "Hide phase details"
     : "Customize phases...";
+}
+
+// ---------------------------------------------------------------------------
+// Account / shared astrax.art SSO login state
+// ---------------------------------------------------------------------------
+const AUTH_CHANNEL_NAME = "astrax-auth"; // must match the portal + sibling apps
+let authChannel = null;
+
+function initAuthChannel() {
+  if (typeof BroadcastChannel === "undefined") return;
+  try {
+    authChannel = new BroadcastChannel(AUTH_CHANNEL_NAME);
+    authChannel.addEventListener("message", (e) => {
+      // Any astrax.art tab signed out — drop this tab's session too.
+      if (e.data && e.data.type === "logout") {
+        window.location.href = "/auth/logout";
+      }
+    });
+  } catch (e) {
+    /* environments without BroadcastChannel degrade silently */
+  }
+}
+
+function getInitials(name) {
+  if (!name) return "··";
+  const parts = String(name).trim().split(/[\s._-]+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return String(name).slice(0, 2).toUpperCase();
+}
+
+async function loadAccount() {
+  const account = document.getElementById("account");
+  if (!account) return;
+  try {
+    const resp = await fetch("/api/me", { credentials: "include" });
+    if (!resp.ok) return; // page loads for unauthenticated users already redirect to /login
+    const me = await resp.json();
+    const name = me.username || me.name || me.email || me.sub || "User";
+    const authed = me.authenticated !== false;
+    const role = authed ? (me.role || "astrax.art") : "local session";
+
+    document.getElementById("account-avatar").textContent = getInitials(name);
+    const nameEl = document.getElementById("account-name");
+    nameEl.textContent = name;
+    nameEl.title = name;
+    document.getElementById("account-role").textContent = role;
+
+    if (authed) {
+      const signout = document.getElementById("account-signout");
+      signout.classList.remove("hidden");
+      signout.addEventListener("click", signOut);
+    }
+    account.classList.remove("hidden");
+  } catch (e) {
+    /* leave the account row hidden if the user can't be resolved */
+  }
+}
+
+function signOut() {
+  // Notify sibling astrax.art tabs first, then clear our own session server-side.
+  try { if (authChannel) authChannel.postMessage({ type: "logout" }); } catch (e) {}
+  window.location.href = "/auth/logout";
 }
