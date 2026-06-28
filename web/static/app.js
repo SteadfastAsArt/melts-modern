@@ -1112,6 +1112,7 @@ async function startSimulation(config, url = "/api/simulate") {
   $btnRun.disabled = true;
   $btnRun.querySelector(".btn-run-label").textContent = "Running...";
   $emptyState.classList.add("hidden");
+  document.querySelector(".main").classList.add("has-results");
   $batchResultTabs.classList.add("hidden");
   $sampleSelector.classList.add("hidden");
   $errorDisplay.classList.add("hidden");
@@ -1239,6 +1240,7 @@ async function startBatch(batchConfig) {
   $btnRun.disabled = true;
   $btnRun.querySelector(".btn-run-label").textContent = "Running Batch...";
   $emptyState.classList.add("hidden");
+  document.querySelector(".main").classList.add("has-results");
   $errorDisplay.classList.add("hidden");
   $progressSection.classList.remove("hidden");
   $progressBar.style.width = "0%";

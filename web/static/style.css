@@ -494,19 +494,12 @@ body {
   position: relative;
   overflow: hidden;
   transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
-  animation: btn-pulse 3s ease-in-out infinite;
-}
-
-@keyframes btn-pulse {
-  0%, 100% { box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3); }
-  50% { box-shadow: 0 4px 20px rgba(59, 130, 246, 0.5); }
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.28);
 }
 
 .btn-run:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
-  animation: none;
 }
 
 .btn-run:active:not(:disabled) {
@@ -856,6 +849,13 @@ body {
 }
 
 /* ---------- Empty state ---------- */
+/* Until a run starts, the empty-state owns the whole canvas — the (empty)
+   tab bar and plot frames stay hidden so the first screen reads as intentional. */
+.main:not(.has-results) > .tabs,
+.main:not(.has-results) > .tab-content {
+  display: none;
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -872,33 +872,53 @@ body {
 }
 
 .empty-icon {
-  margin-bottom: 20px;
-  color: #94a3b8;
-  opacity: 0.6;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 132px;
+  margin-bottom: 22px;
+}
+
+/* Thermal halo — magma warmth cooling into the cool page, the subject in one mark */
+.empty-icon::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 56%,
+    rgba(234, 140, 86, 0.20),
+    rgba(59, 130, 246, 0.07) 54%,
+    transparent 72%
+  );
 }
 
 .empty-icon svg {
-  width: 80px;
-  height: 80px;
+  position: relative;
+  width: 82px;
+  height: 82px;
+  color: #64748b;
+  opacity: 0.72;
 }
 
 .empty-state h2 {
-  font-size: 1.35rem;
-  color: #475569;
-  margin-bottom: 8px;
+  font-size: 1.5rem;
+  color: #334155;
+  margin-bottom: 10px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 .empty-state p {
-  font-size: 0.9rem;
-  max-width: 420px;
-  line-height: 1.6;
+  font-size: 0.92rem;
+  max-width: 440px;
+  line-height: 1.65;
   color: #64748b;
 }
 
 .empty-state p strong {
-  color: #3b82f6;
+  color: #2563eb;
   font-weight: 600;
 }
 
