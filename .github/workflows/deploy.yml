@@ -27,8 +27,8 @@ jobs:
 
             echo "=== Health check ==="
             for i in $(seq 1 20); do
-              code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/api/me)
-              if [ "$code" != "000" ]; then
+              code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/api/me || true)
+              if [ -n "$code" ] && [ "$code" != "000" ]; then
                 echo "melts-modern up after ${i}s (/api/me -> $code)"
                 break
               fi
