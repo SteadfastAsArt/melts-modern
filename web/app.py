@@ -218,12 +218,21 @@ async def get_me(request: Request):
                 f"{auth_api}/api/auth/me",
                 headers={"Authorization": f"Bearer {token}"} if token else {},
             )
-        data = resp.json() if resp.content else {}
-        if isinstance(data, dict):
-            data.setdefault("authenticated", resp.status_code == 200)
-        return JSONResponse(content=data, status_code=resp.status_code)
     except Exception as e:
-        return JSONResponse(content={"error": f"auth service unavailable: {e}"}, status_code=502)
+        # astrax genuinely unreachable — this is the only real 502 case
+        return JSONResponse(content={"authenticated": False, "error": f"auth service unreachable: {e}"}, status_code=502)
+
+    # Don't 502 just because the upstream returned a non-JSON error body (e.g. a
+    # token whose user no longer exists). Degrade gracefully: the frontend hides
+    # the account row on any non-2xx, so a clean status is enough.
+    try:
+        data = resp.json()
+    except Exception:
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    data.setdefault("authenticated", resp.status_code == 200)
+    return JSONResponse(content=data, status_code=resp.status_code)
 
 
 @app.get("/auth/logout")
