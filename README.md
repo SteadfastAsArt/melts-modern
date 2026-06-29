@@ -120,13 +120,21 @@ To run behind nginx with shared `*.astrax.art` SSO (the [geo-auth](https://githu
    MELTS_AUTH=1
    GEO_AUTH_PATH=/opt/geo-auth          # where the geo_auth module lives
    JWT_SECRET=<shared secret, must match the astrax portal>
+   COOKIE_DOMAIN=.astrax.art            # share the session cookie across subdomains
    LOGIN_URL=https://astrax.art/login
-   AUTH_API_URL=http://127.0.0.1:8900
+   AUTH_API_URL=http://127.0.0.1:8900   # astrax auth API, for /api/me + logout blacklist
    ```
    `deploy.sh` wires it in as a systemd `EnvironmentFile`. When `MELTS_AUTH` is
    unset (local dev / tests), the app runs open with no auth.
 3. Add an nginx vhost (`melts.astrax.art` → `127.0.0.1:9000`) with TLS, forwarding
    `X-Forwarded-Proto` so the SSO cookie is marked `Secure`.
+
+When enabled, the sidebar shows the signed-in user (an account row at the bottom)
+and a sign-out button. Endpoints: `GET /api/me` returns the current user (proxied
+from the astrax auth API); `GET /auth/logout` clears the shared `.astrax.art`
+cookie itself — `melts.astrax.art` is a subdomain of the cookie domain, so logout
+needs no change on the astrax side. Sign-out propagates to other open
+`*.astrax.art` tabs via a `BroadcastChannel`.
 
 ### Service Management
 

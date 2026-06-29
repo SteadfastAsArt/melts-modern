@@ -13,10 +13,10 @@ Web-based interactive frontend for rhyolite-MELTS thermodynamic modeling.
   - `plotting/common.py` — TAS boundaries, AFM coords, PHASE_COLORS, derived-column calculator
   - `magemin_engine.py` — MAGEMin engine via PetThermoTools/Julia
 - **web/** — FastAPI app, one worker subprocess per simulation
-  - `app.py` — REST endpoints; frontend polls `/results` for streaming progress (both rMELTS and MAGEMin routes)
+  - `app.py` — REST endpoints; frontend polls `/results` for streaming progress (both rMELTS and MAGEMin routes). Optional astrax SSO gate via shared `geo_auth` when `MELTS_AUTH=1`: `/api/me` (current user, proxies astrax), `/auth/logout` (clears the `.astrax.art` cookie), `/login`+`/auth/callback` (from geo-auth)
   - `worker.py` — rMELTS subprocess (C library is a global singleton)
   - `magemin_worker.py` — MAGEMin subprocess (Julia/PetThermoTools)
-  - `static/` — vanilla HTML/CSS/JS SPA with Plotly charts
+  - `static/` — vanilla HTML/CSS/JS SPA with Plotly charts; sidebar account row shows SSO login state
 - **Bundled binaries:** `alphamelts-app/`, `alphamelts-py/`, `lib/` (x86-64 Linux ELF, checked into repo)
 - **MAGEMin deps (not in repo):** Julia runtime (`~/julia/`), PetThermoTools (pip), Julia depot (`~/.julia/`)
 
@@ -26,12 +26,13 @@ Web-based interactive frontend for rhyolite-MELTS thermodynamic modeling.
 - Plotly figure width is NOT set in Python — `responsive: true` in JS handles sizing.
 - Multi-panel charts (Harker 3x3, Evolution 2x3, etc.) each occupy their own full-width row.
 - Filter `df[df["mass_liquid_g"] > 0.01]` in all liquid-composition plots to avoid (0,0) outliers.
+- Auth is opt-in: `MELTS_AUTH` unset (local/tests) → app runs open; set it + `JWT_SECRET`/`COOKIE_DOMAIN`/`LOGIN_URL`/`AUTH_API_URL` to gate behind astrax SSO. Logout works without any astrax change — `melts.astrax.art` clears the shared `.astrax.art` cookie itself (it's a subdomain).
 
 ## Testing
 
 ```bash
-pytest tests/                 # Python: 23 smoke tests for all fig_ functions
-npx vitest run                # JS: 17 unit tests for scrubber logic
+pytest tests/                 # Python: 30 smoke tests (fig_ builders + path-axis/TAS-range)
+npx vitest run                # JS: 21 unit tests (scrubber logic + highlight trace selection)
 ```
 
 ## Running
