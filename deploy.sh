@@ -75,7 +75,8 @@ echo "  Python: ${PYTHON} (${PYVER})"
 
 echo "  安装 Python 依赖..."
 # python-jose + httpx are needed by the geo-auth SSO module (used when MELTS_AUTH=1)
-"$PYTHON" -m pip install --quiet fastapi uvicorn pandas plotly pydantic openpyxl "python-jose[cryptography]" httpx
+# tinynumpy: hard dependency of the vendored alphamelts-py bindings (meltsdynamic.py)
+"$PYTHON" -m pip install --quiet fastapi uvicorn pandas plotly pydantic openpyxl "python-jose[cryptography]" httpx tinynumpy
 echo "  ✓ rMELTS Python 依赖已就绪"
 
 # ---- 4. Julia + MAGEMin (可选) ----
