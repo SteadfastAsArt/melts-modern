@@ -104,12 +104,20 @@ def _install_auth(app) -> bool:
         if os.path.isdir(ga_path) and ga_path not in sys.path:
             sys.path.insert(0, ga_path)
         from geo_auth import GeoAuth  # re-raise if truly missing: never run open when auth is requested
+    # Order matters and is counter-intuitive: Starlette runs middleware
+    # LIFO, so the LAST one registered runs FIRST. The app-access gate needs
+    # request.state.user_id, which geo_auth's middleware sets — so the gate
+    # must be registered BEFORE install(), to end up INSIDE it.
+    #
+    # Registered the other way round it ran first, saw no user_id, and
+    # answered every request with 503 "Service temporarily unavailable"
+    # (UNKNOWN with a cold cache). Measured, not theorised.
+    _install_app_access(app)
     GeoAuth(
         jwt_secret=os.getenv("JWT_SECRET"),
         login_url=os.getenv("LOGIN_URL"),
         auth_api_url=os.getenv("AUTH_API_URL"),
     ).install(app, public_prefixes=("/static/",), public_paths=("/auth/logout",))
-    _install_app_access(app)
     return True
 
 
