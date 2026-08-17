@@ -109,6 +109,80 @@ def _install_auth(app) -> bool:
         login_url=os.getenv("LOGIN_URL"),
         auth_api_url=os.getenv("AUTH_API_URL"),
     ).install(app, public_prefixes=("/static/",), public_paths=("/auth/logout",))
+    _install_app_access(app)
+    return True
+
+
+def _install_app_access(app) -> bool:
+    """Per-app authorization: is this signed-in account allowed to use melts?
+
+    Signing in proves who you are; it does not say which of the four astrax
+    products you may use. That second question is answered by
+    astrax.user_app_access, and this asks it.
+
+    melts reads the answer over HTTP rather than from the database, because
+    this venv has httpx but neither asyncpg nor redis. The endpoint is the
+    portal on loopback, so it never crosses nginx and is unaffected by the
+    rate limit on /api/auth/. Without redis for pub/sub the revocation bound
+    is the 5s epoch poll rather than sub-second, which is well inside "not
+    waiting for a token to expire".
+
+    Off unless APP_ACCESS_SERVICE_TOKEN is set — an unconfigured deployment
+    keeps behaving exactly as it did.
+    """
+    token = os.getenv("APP_ACCESS_SERVICE_TOKEN", "")
+    if not token:
+        return False
+    import logging
+
+    from geo_auth.appaccess import AppAccess, HttpGrantSource
+    from geo_auth.appaccess_http import gate
+
+    log = logging.getLogger("melts.app_access")
+
+    base = os.getenv("APP_ACCESS_API_URL") or os.getenv("AUTH_API_URL", "")
+    access = AppAccess(
+        "melts",
+        source=HttpGrantSource(base, service_token=token),
+        enforce_default=os.getenv("APP_ACCESS_ENFORCE", "0") in ("1", "true", "yes"),
+        breakglass_user_ids=[
+            u.strip() for u in os.getenv("APP_ACCESS_BREAKGLASS_UIDS", "").split(",")
+            if u.strip()
+        ],
+        logger=log,
+        on_decision=lambda d: log.warning(
+            "[app_access] %s user=%s source=%s enforced=%s",
+            d.access.value, d.user_id, d.source, d.enforced,
+        ) if not d.allowed else None,
+    )
+
+    # The SPA shell and /api/me stay open. geo_auth's own middleware 302s
+    # non-/api/ paths to /login, and rendering a 403 through that branch is a
+    # redirect loop that hides the login page — so the shell must load and
+    # show the message itself. /api/me stays open so an ungranted account can
+    # still see who it is and reach /auth/logout.
+    exempt_paths = {"/", "/api/me", "/favicon.ico"}
+    exempt_prefixes = ("/static/", "/auth/")
+
+    @app.middleware("http")
+    async def _app_access_middleware(request, call_next):
+        path = request.url.path
+        if path in exempt_paths or path.startswith(exempt_prefixes):
+            return await call_next(request)
+        resp = await gate(access, request)
+        if resp is not None:
+            return resp
+        return await call_next(request)
+
+    @app.on_event("startup")
+    async def _start_app_access() -> None:
+        await access.start()
+        log.warning("[app_access] melts gate started: %s", access.health())
+
+    @app.on_event("shutdown")
+    async def _stop_app_access() -> None:
+        await access.aclose()
+
     return True
 
 
