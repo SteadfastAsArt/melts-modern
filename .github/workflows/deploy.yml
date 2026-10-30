@@ -34,9 +34,13 @@ jobs:
               code=$(curl -sS --connect-timeout 3 --max-time 5 \
                 -o /dev/null -w '%{http_code}' "$1/api/me") || return 1
               case "$code" in
-                200|401) return 0 ;;
+                200|401) ;;
                 *) echo "Unexpected /api/me status: $code"; return 1 ;;
               esac
+              # Follow the anonymous browser flow too: serving static files
+              # is insufficient if the SSO login entrypoint returns 503.
+              curl -fsSL --connect-timeout 3 --max-time 10 --max-redirs 5 \
+                -o /dev/null "$1/"
             }
 
             echo "=== Backend and public route health checks ==="

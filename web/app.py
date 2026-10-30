@@ -169,7 +169,9 @@ def _install_app_access(app) -> bool:
     # redirect loop that hides the login page — so the shell must load and
     # show the message itself. /api/me stays open so an ungranted account can
     # still see who it is and reach /auth/logout.
-    exempt_paths = {"/", "/api/me", "/favicon.ico"}
+    # /login must be reachable before geo_auth has established a user_id.
+    # Otherwise an anonymous visitor is sent here and gets a cold-cache 503.
+    exempt_paths = {"/", "/login", "/api/me", "/favicon.ico"}
     exempt_prefixes = ("/static/", "/auth/")
 
     @app.middleware("http")
