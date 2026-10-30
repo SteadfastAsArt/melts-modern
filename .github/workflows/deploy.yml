@@ -25,17 +25,32 @@ jobs:
             git pull --ff-only origin master
             sudo systemctl restart melts-modern
 
-            echo "=== Health check ==="
-            for i in $(seq 1 20); do
-              code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:9000/api/me || true)
-              if [ -n "$code" ] && [ "$code" != "000" ]; then
-                echo "melts-modern up after ${i}s (/api/me -> $code)"
-                break
-              fi
-              if [ "$i" -eq 20 ]; then
-                echo "Service did not come up:"
-                sudo journalctl -u melts-modern -n 25 --no-pager
-                exit 1
-              fi
-              sleep 1
+            # The static shell is public even with SSO enabled. Check its
+            # identity: a wrong nginx vhost can return HTTP 200 for another app.
+            # /api/me may return 401 without a session, but never 404 or 5xx.
+            check_melts() {
+              page=$(curl -fsS --connect-timeout 3 --max-time 5 "$1/static/index.html") || return 1
+              printf '%s\n' "$page" | grep -Fq '<title>MELTS Modern</title>' || return 1
+              code=$(curl -sS --connect-timeout 3 --max-time 5 \
+                -o /dev/null -w '%{http_code}' "$1/api/me") || return 1
+              case "$code" in
+                200|401) return 0 ;;
+                *) echo "Unexpected /api/me status: $code"; return 1 ;;
+              esac
+            }
+
+            echo "=== Backend and public route health checks ==="
+            for base in http://127.0.0.1:9000 https://melts.astrax.art; do
+              for i in $(seq 1 10); do
+                if check_melts "$base"; then
+                  echo "MELTS healthy at $base after ${i} attempts"
+                  break
+                fi
+                if [ "$i" -eq 10 ]; then
+                  echo "MELTS health check failed at $base"
+                  sudo journalctl -u melts-modern -n 25 --no-pager
+                  exit 1
+                fi
+                sleep 1
+              done
             done
